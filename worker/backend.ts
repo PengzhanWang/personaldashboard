@@ -8,13 +8,15 @@ import {
   type Row,
   type Snapshot,
   type TableName,
+  type UploadImageRequest,
 } from '../shared/schema';
 
-/** The data plane behind the Worker: real Apps Script, or a KV mock for local dev. */
 export interface Backend {
   readonly kind: 'gas' | 'mock';
   snapshot(): Promise<Snapshot>;
   mutate(mutations: Mutation[]): Promise<MutateResponse>;
+  uploadImage(req: UploadImageRequest): Promise<{ file_id: string }>;
+  getImage(fileId: string): Promise<{ base64: string; mimeType: string } | null>;
 }
 
 export function getBackend(env: Env): Backend {
@@ -24,8 +26,6 @@ export function getBackend(env: Env): Backend {
 
 // ---------------------------------------------------------------------------
 // Apps Script backend
-// Apps Script doPost cannot read request headers, so the HMAC signature goes in
-// the query string (?sig=) and is computed over the raw body, which carries ts.
 // ---------------------------------------------------------------------------
 class GasBackend implements Backend {
   readonly kind = 'gas' as const;
@@ -36,7 +36,6 @@ class GasBackend implements Backend {
     const body = JSON.stringify({ action, ts: Date.now(), payload });
     const sig = await hmacHex(this.secret, body);
     const sep = this.url.includes('?') ? '&' : '?';
-    // POST /exec answers 302 -> googleusercontent; fetch follows it with GET, which is expected.
     const res = await fetch(`${this.url}${sep}sig=${sig}`, {
       method: 'POST',
       body,
@@ -60,11 +59,20 @@ class GasBackend implements Backend {
   mutate(mutations: Mutation[]) {
     return this.call<MutateResponse>('mutate', { mutations });
   }
+  uploadImage(req: UploadImageRequest) {
+    return this.call<{ file_id: string }>('uploadImage', req);
+  }
+  async getImage(fileId: string) {
+    try {
+      return await this.call<{ base64: string; mimeType: string }>('getImage', { file_id: fileId });
+    } catch {
+      return null;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
-// Mock backend (KV-stored tables). Mirrors the Apps Script semantics so the whole
-// app can be exercised locally with `wrangler dev` before Google is set up.
+// Mock backend (KV-stored tables & images for local `wrangler dev`)
 // ---------------------------------------------------------------------------
 type Db = Record<TableName, Row[]> & { _done: Record<string, MutationResult> };
 
@@ -73,9 +81,49 @@ class MockBackend implements Backend {
   constructor(private kv: KVNamespace) {}
 
   private async load(): Promise<Db> {
-    const db = (await this.kv.get<Db>('mock:db', 'json')) || ({ Projects: [], Tasks: [], _done: {} } as Db);
-    db._done ||= {};
-    return db;
+    const existing = await this.kv.get<Db>('mock:db', 'json');
+    if (existing && Array.isArray(existing.Boards) && Array.isArray(existing.Cards)) {
+      existing._done ||= {};
+      return existing;
+    }
+    const iso = new Date().toISOString();
+    const seeded: Db = {
+      Boards: [
+        {
+          id: 'main',
+          created_at: iso,
+          updated_at: iso,
+          updated_by: 'mock',
+          version: '1',
+          deleted: 'FALSE',
+          title: '主画布',
+          sort: '0',
+          sensitive: 'FALSE',
+        },
+      ],
+      Cards: [
+        {
+          id: 'starter_list',
+          created_at: iso,
+          updated_at: iso,
+          updated_by: 'mock',
+          version: '1',
+          deleted: 'FALSE',
+          board_id: 'main',
+          tag: '清单',
+          title: '随手清单',
+          finish: 'default',
+          layout_json: JSON.stringify({ x: 0, y: 0, w: 4, h: 2 }),
+          content_md: '- [ ] 点复选框可直接打勾\n- [ ] 拖动空白处换位，拉右下角缩放',
+          images_json: '[]',
+          links_json: '[]',
+          sensitive: 'FALSE',
+        },
+      ],
+      _done: {},
+    };
+    await this.kv.put('mock:db', JSON.stringify(seeded));
+    return seeded;
   }
 
   async snapshot(): Promise<Snapshot> {
@@ -83,8 +131,8 @@ class MockBackend implements Backend {
     return {
       generated_at: Date.now(),
       tables: {
-        Projects: db.Projects.filter((r) => r.deleted !== 'TRUE'),
-        Tasks: db.Tasks.filter((r) => r.deleted !== 'TRUE'),
+        Boards: db.Boards.filter((r) => r.deleted !== 'TRUE'),
+        Cards: db.Cards.filter((r) => r.deleted !== 'TRUE'),
       },
     };
   }
@@ -97,15 +145,23 @@ class MockBackend implements Backend {
       db._done[m.mutation_id] = r;
       return r;
     });
-    // keep the idempotency map bounded
     const keys = Object.keys(db._done);
     if (keys.length > 500) for (const k of keys.slice(0, keys.length - 500)) delete db._done[k];
     await this.kv.put('mock:db', JSON.stringify(db));
     return { results, server_time: Date.now() };
   }
+
+  async uploadImage(req: UploadImageRequest): Promise<{ file_id: string }> {
+    const id = 'mock_' + crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+    await this.kv.put(`mock:img:${id}`, JSON.stringify({ base64: req.base64, mimeType: req.mimeType }));
+    return { file_id: id };
+  }
+
+  async getImage(fileId: string): Promise<{ base64: string; mimeType: string } | null> {
+    return await this.kv.get<{ base64: string; mimeType: string }>(`mock:img:${fileId}`, 'json');
+  }
 }
 
-/** Same algorithm as gas/Code.gs `applyMutation_`: field-level last-write-wins. */
 function applyMutation(rows: Row[], m: Mutation, now: number): MutationResult {
   const cols = TABLE_COLUMNS[m.table];
   if (!cols) return { mutation_id: m.mutation_id, status: 'error', error: `unknown table ${m.table}` };

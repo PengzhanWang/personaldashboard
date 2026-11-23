@@ -1,6 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   TABLE_COLUMNS,
+  type CardImage,
+  type CardLayout,
   type Mutation,
   type Row,
   type Snapshot,
@@ -14,7 +16,9 @@ import {
   apiLogout,
   apiMe,
   apiMutate,
+  apiUploadImage,
 } from './api';
+import { compressImageFile } from './image';
 import {
   clearLocalData,
   loadCachedSnapshot,
@@ -33,30 +37,32 @@ interface StoreValue {
   authState: 'checking' | 'authed' | 'unauthed';
   device: DeviceMode;
   backendKind: 'gas' | 'mock' | null;
-  projects: Row[];
-  tasks: Row[];
+  boards: Row[];
+  cards: Row[];
   syncState: SyncState;
   lastSyncedAt: number | null;
   pendingCount: number;
   toast: string | null;
+  showToast: (msg: string) => void;
+  clearToast: () => void;
   login: (password: string, device: DeviceMode) => Promise<void>;
   logout: () => Promise<void>;
   refresh: (force?: boolean) => Promise<void>;
   upsertRow: (table: TableName, patch: Record<string, string>, existing?: Row) => Promise<string>;
   deleteRow: (table: TableName, row: Row) => Promise<void>;
-  clearToast: () => void;
+  saveLayoutsDebounced: (updates: { row: Row; layout: CardLayout }[]) => void;
+  uploadImage: (file: File) => Promise<{ image: CardImage; sizeKb: number }>;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
 
-const EMPTY_SNAPSHOT: Snapshot = { generated_at: 0, tables: { Projects: [], Tasks: [] } };
+const EMPTY_SNAPSHOT: Snapshot = { generated_at: 0, tables: { Boards: [], Cards: [] } };
 
-/** Overlay queued outbox mutations onto the base snapshot so UI updates are instant and consistent. */
 function applyOutboxToSnapshot(base: Snapshot, outbox: Mutation[]): Snapshot {
   if (!outbox.length) return base;
   const tables: Record<TableName, Row[]> = {
-    Projects: base.tables.Projects.map((r) => ({ ...r })),
-    Tasks: base.tables.Tasks.map((r) => ({ ...r })),
+    Boards: base.tables.Boards.map((r) => ({ ...r })),
+    Cards: base.tables.Cards.map((r) => ({ ...r })),
   };
   for (const m of outbox) {
     const list = tables[m.table];
@@ -99,6 +105,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const outboxRef = useRef<Mutation[]>([]);
   const flushingRef = useRef(false);
   const toastTimerRef = useRef<number | null>(null);
+  const layoutDebounceRef = useRef<number | null>(null);
 
   baseRef.current = baseSnapshot;
   outboxRef.current = outbox;
@@ -106,7 +113,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const showToast = useCallback((msg: string) => {
     setToast(msg);
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = window.setTimeout(() => setToast(null), 3500);
+    toastTimerRef.current = window.setTimeout(() => setToast(null), 3000);
   }, []);
 
   const clearToast = useCallback(() => setToast(null), []);
@@ -200,7 +207,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           }
           setLastSyncedAt(Date.now());
           setSyncState('synced');
-          showToast('已从数据源刷新');
+          showToast('已从 Google Sheets 同步');
           return;
         }
 
@@ -228,7 +235,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [flushOutbox, showToast],
   );
 
-  // Initial hydration: read IndexedDB immediately, then verify session & refresh in background.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -248,7 +254,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         etagRef.current = etag;
         setBaseSnapshot(snapshot);
         setLastSyncedAt(snapshot.generated_at);
-        // Show cached data right away while verifying session in background
         setAuthState('authed');
       }
 
@@ -285,7 +290,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refresh]);
 
-  // Replay outbox when browser regains connectivity
   useEffect(() => {
     const onOnline = () => {
       if (authState === 'authed') void flushOutbox();
@@ -324,13 +328,29 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setAuthState('unauthed');
   }, []);
 
-  const enqueue = useCallback(
-    async (m: Mutation) => {
-      const next = [...outboxRef.current, m];
+  const enqueueMany = useCallback(
+    async (mutations: Mutation[], flushNow = true) => {
+      // Collapse duplicate pending layout-only patches for the same row_id so rapid drags stay compact
+      const next = outboxRef.current.slice();
+      for (const m of mutations) {
+        const existingIdx = next.findIndex(
+          (x) =>
+            x.table === m.table &&
+            x.row_id === m.row_id &&
+            x.op === 'upsert' &&
+            m.op === 'upsert' &&
+            Object.keys(x.patch).length === 1 &&
+            'layout_json' in x.patch &&
+            Object.keys(m.patch).length === 1 &&
+            'layout_json' in m.patch,
+        );
+        if (existingIdx !== -1) next[existingIdx] = m;
+        else next.push(m);
+      }
       outboxRef.current = next;
       setOutbox(next);
       await saveOutbox(next);
-      void flushOutbox();
+      if (flushNow) void flushOutbox();
     },
     [flushOutbox],
   );
@@ -338,36 +358,82 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const upsertRow = useCallback(
     async (table: TableName, patch: Record<string, string>, existing?: Row): Promise<string> => {
       const rowId = existing?.id || ulid();
-      await enqueue({
-        mutation_id: ulid(),
-        table,
-        row_id: rowId,
-        op: 'upsert',
-        base_version: existing?.version || '0',
-        patch,
-        device,
-        client_ts: Date.now(),
-      });
+      await enqueueMany([
+        {
+          mutation_id: ulid(),
+          table,
+          row_id: rowId,
+          op: 'upsert',
+          base_version: existing?.version || '0',
+          patch,
+          device,
+          client_ts: Date.now(),
+        },
+      ]);
       return rowId;
     },
-    [device, enqueue],
+    [device, enqueueMany],
   );
 
   const deleteRow = useCallback(
     async (table: TableName, row: Row) => {
-      await enqueue({
-        mutation_id: ulid(),
-        table,
-        row_id: row.id,
-        op: 'delete',
-        base_version: row.version || '0',
-        patch: { deleted: 'TRUE' },
-        device,
-        client_ts: Date.now(),
-      });
+      await enqueueMany([
+        {
+          mutation_id: ulid(),
+          table,
+          row_id: row.id,
+          op: 'delete',
+          base_version: row.version || '0',
+          patch: { deleted: 'TRUE' },
+          device,
+          client_ts: Date.now(),
+        },
+      ]);
     },
-    [device, enqueue],
+    [device, enqueueMany],
   );
+
+  /** Update card layouts optimistically right away, then debounce 1.2s before sending one batch to Sheets. */
+  const saveLayoutsDebounced = useCallback(
+    (updates: { row: Row; layout: CardLayout }[]) => {
+      if (!updates.length) return;
+      const now = Date.now();
+      const mutations: Mutation[] = updates.map(({ row, layout }) => ({
+        mutation_id: ulid(),
+        table: 'Cards',
+        row_id: row.id,
+        op: 'upsert',
+        base_version: row.version || '0',
+        patch: { layout_json: JSON.stringify(layout) },
+        device,
+        client_ts: now,
+      }));
+      void enqueueMany(mutations, false);
+
+      if (layoutDebounceRef.current) window.clearTimeout(layoutDebounceRef.current);
+      layoutDebounceRef.current = window.setTimeout(() => {
+        layoutDebounceRef.current = null;
+        void flushOutbox();
+      }, 1200);
+    },
+    [device, enqueueMany, flushOutbox],
+  );
+
+  const uploadImage = useCallback(async (file: File) => {
+    const compressed = await compressImageFile(file);
+    const { file_id } = await apiUploadImage({
+      base64: compressed.base64,
+      mimeType: compressed.mimeType,
+      filename: compressed.filename,
+    });
+    const image: CardImage = {
+      id: ulid(),
+      file_id,
+      thumb: compressed.thumb,
+      caption: '',
+    };
+    return { image, sizeKb: compressed.sizeKb };
+  }, []);
 
   const effective = useMemo(() => applyOutboxToSnapshot(baseSnapshot, outbox), [baseSnapshot, outbox]);
 
@@ -376,18 +442,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       authState,
       device,
       backendKind,
-      projects: effective.tables.Projects,
-      tasks: effective.tables.Tasks,
+      boards: effective.tables.Boards,
+      cards: effective.tables.Cards,
       syncState,
       lastSyncedAt,
       pendingCount: outbox.length,
       toast,
+      showToast,
+      clearToast,
       login,
       logout,
       refresh,
       upsertRow,
       deleteRow,
-      clearToast,
+      saveLayoutsDebounced,
+      uploadImage,
     }),
     [
       authState,
@@ -398,12 +467,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       lastSyncedAt,
       outbox.length,
       toast,
+      showToast,
+      clearToast,
       login,
       logout,
       refresh,
       upsertRow,
       deleteRow,
-      clearToast,
+      saveLayoutsDebounced,
+      uploadImage,
     ],
   );
 

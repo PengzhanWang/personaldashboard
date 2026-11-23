@@ -2,10 +2,10 @@ import { del, get, set } from 'idb-keyval';
 import type { Mutation, Snapshot } from '../../shared/schema';
 
 const KEYS = {
-  snapshot: 'lifeos:snapshot',
-  etag: 'lifeos:etag',
-  outbox: 'lifeos:outbox',
-  device: 'lifeos:device',
+  snapshot: 'lifeos:v2:snapshot',
+  etag: 'lifeos:v2:etag',
+  outbox: 'lifeos:v2:outbox',
+  device: 'lifeos:v2:device',
 } as const;
 
 export type DeviceMode = 'personal' | 'work';
@@ -15,7 +15,10 @@ export async function loadCachedSnapshot(): Promise<{ snapshot: Snapshot | null;
     get<Snapshot>(KEYS.snapshot).catch(() => undefined),
     get<string>(KEYS.etag).catch(() => undefined),
   ]);
-  return { snapshot: snapshot ?? null, etag: etag ?? null };
+  if (!snapshot?.tables?.Boards || !snapshot?.tables?.Cards) {
+    return { snapshot: null, etag: null };
+  }
+  return { snapshot, etag: etag ?? null };
 }
 
 export async function saveCachedSnapshot(snapshot: Snapshot, etag?: string | null): Promise<void> {

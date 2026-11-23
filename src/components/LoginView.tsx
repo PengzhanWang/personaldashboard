@@ -24,22 +24,24 @@ export function LoginView() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50">
+    <div className="min-h-screen canvas-dots flex items-center justify-center p-5">
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-5"
+        className="w-full max-w-sm bg-[var(--card)] rounded-[24px] border border-[var(--border)] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.08)] p-7 space-y-6"
       >
-        <div className="space-y-1">
-          <div className="inline-flex items-center gap-2 text-slate-900 font-semibold text-lg">
-            <span className="w-2.5 h-2.5 rounded-full bg-sky-500" />
-            LifeOS Dashboard
+        <div className="space-y-2">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-[var(--foreground)] text-[var(--background)] flex items-center justify-center text-xs font-semibold">
+              L
+            </div>
+            <span className="font-semibold text-base tracking-tight">LifeOS</span>
           </div>
-          <p className="text-sm text-slate-500">输入访问密码进入个人看板</p>
+          <p className="text-xs text-[var(--muted-foreground)]">输入密码进入你的个人拼图画布</p>
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="password" className="block text-sm font-medium text-slate-700">
-            密码
+          <label htmlFor="password" className="block text-xs font-medium text-[var(--muted-foreground)]">
+            访问密码
           </label>
           <input
             id="password"
@@ -49,16 +51,16 @@ export function LoginView() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
-            className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+            className="w-full rounded-2xl bg-[var(--background)] border border-[var(--border)] px-4 py-2.5 text-sm focus:outline-none focus:border-[var(--foreground)] transition"
           />
         </div>
 
         <div className="space-y-1.5">
-          <span className="block text-sm font-medium text-slate-700">设备类型</span>
+          <span className="block text-xs font-medium text-[var(--muted-foreground)]">当前设备</span>
           <div className="grid grid-cols-2 gap-2">
             {(
               [
-                ['personal', '个人设备', '保持登录 30 天'],
+                ['personal', '个人设备', '30 天免登录'],
                 ['work', '公司电脑', '12 小时 · 隐藏敏感'],
               ] as const
             ).map(([val, title, sub]) => (
@@ -66,27 +68,27 @@ export function LoginView() {
                 key={val}
                 type="button"
                 onClick={() => setDevice(val)}
-                className={`text-left rounded-xl border p-2.5 transition ${
+                className={`text-left rounded-2xl border p-3 transition cursor-pointer ${
                   device === val
-                    ? 'border-sky-500 bg-sky-50 text-sky-900'
-                    : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                    ? 'border-[var(--foreground)] bg-[var(--background)]'
+                    : 'border-[var(--border)] opacity-70 hover:opacity-100'
                 }`}
               >
-                <div className="text-sm font-medium">{title}</div>
-                <div className="text-xs text-slate-500 mt-0.5">{sub}</div>
+                <div className="text-xs font-semibold">{title}</div>
+                <div className="text-[11px] text-[var(--muted-foreground)] mt-0.5">{sub}</div>
               </button>
             ))}
           </div>
         </div>
 
-        {error && <div className="text-sm text-rose-600 bg-rose-50 rounded-lg px-3 py-2">{error}</div>}
+        {error && <div className="text-xs text-rose-600 bg-rose-50 rounded-xl px-3.5 py-2.5">{error}</div>}
 
         <button
           type="submit"
           disabled={submitting || !password.trim()}
-          className="w-full rounded-xl bg-slate-900 text-white py-2.5 text-sm font-medium hover:bg-slate-800 disabled:opacity-50 transition cursor-pointer"
+          className="w-full rounded-full bg-[var(--foreground)] text-[var(--background)] py-2.5 text-xs font-medium hover:opacity-90 disabled:opacity-40 transition cursor-pointer"
         >
-          {submitting ? '正在验证…' : '登录'}
+          {submitting ? '验证中…' : '进入画布'}
         </button>
       </form>
     </div>

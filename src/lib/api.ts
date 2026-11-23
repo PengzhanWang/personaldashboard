@@ -1,4 +1,10 @@
-import type { MutateResponse, Mutation, SnapshotResponse } from '../../shared/schema';
+import type {
+  MutateResponse,
+  Mutation,
+  SnapshotResponse,
+  UploadImageRequest,
+  UploadImageResponse,
+} from '../../shared/schema';
 import type { DeviceMode } from './storage';
 
 export class AuthError extends Error {
@@ -65,4 +71,13 @@ export async function apiMutate(mutations: Mutation[]): Promise<MutateResponse> 
     body: JSON.stringify({ mutations }),
   });
   return parseJson<MutateResponse>(res);
+}
+
+export async function apiUploadImage(req: UploadImageRequest): Promise<UploadImageResponse> {
+  const res = await fetch('/api/upload', {
+    method: 'POST',
+    headers: HEADERS,
+    body: JSON.stringify(req),
+  });
+  return parseJson<UploadImageResponse>(res);
 }
