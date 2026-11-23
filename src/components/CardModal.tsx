@@ -33,6 +33,7 @@ export function CardModal({
   draft,
   boards,
   onCreate,
+  onRequestDelete,
   onClose,
 }: {
   /** Existing card to edit (undefined when creating a brand-new draft). */
@@ -40,9 +41,10 @@ export function CardModal({
   draft?: CardDraft;
   boards: Row[];
   onCreate?: (patch: Record<string, string>) => Promise<void>;
+  onRequestDelete?: (card: Row) => void;
   onClose: () => void;
 }) {
-  const { upsertRow, deleteRow, uploadImage, showToast } = useStore();
+  const { upsertRow, uploadImage, showToast } = useStore();
   const isNew = !card;
 
   const [tag, setTag] = useState(card?.tag ?? draft?.tag ?? '模块');
@@ -128,11 +130,9 @@ export function CardModal({
     onClose();
   }
 
-  async function handleDelete() {
+  function handleDelete() {
     if (!card) return;
-    await deleteRow('Cards', card);
-    showToast('模块已删除');
-    onClose();
+    onRequestDelete?.(card);
   }
 
   function handleAddLink(e: React.FormEvent) {

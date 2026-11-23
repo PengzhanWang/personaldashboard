@@ -52,6 +52,7 @@ function CanvasShell() {
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [creatingDraft, setCreatingDraft] = useState<CardDraft | null>(null);
+  const [confirmDeleteCard, setConfirmDeleteCard] = useState<Row | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [blurred, setBlurred] = useState(false);
   const [dockUploading, setDockUploading] = useState(false);
@@ -74,13 +75,14 @@ function CanvasShell() {
       if (e.altKey && e.key.toLowerCase() === 'b') {
         e.preventDefault();
         setBlurred((v) => !v);
-      } else if (e.key === 'Escape' && lightboxSrc) {
-        setLightboxSrc(null);
+      } else if (e.key === 'Escape') {
+        if (confirmDeleteCard) setConfirmDeleteCard(null);
+        else if (lightboxSrc) setLightboxSrc(null);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [lightboxSrc]);
+  }, [lightboxSrc, confirmDeleteCard]);
 
   const boardCards = useMemo(
     () => cards.filter((c) => (c.board_id || 'main') === activeBoardId),
@@ -352,10 +354,7 @@ function CanvasShell() {
           }}
           onUpdateCard={(c, patch) => void upsertRow('Cards', patch, c)}
           onDuplicateCard={(c) => void handleDuplicateCard(c)}
-          onDeleteCard={(c) => {
-            void deleteRow('Cards', c);
-            showToast('模块已删除');
-          }}
+          onDeleteCard={(c) => setConfirmDeleteCard(c)}
           onCommitLayouts={saveLayoutsDebounced}
           onOpenLightbox={setLightboxSrc}
         />
@@ -370,7 +369,12 @@ function CanvasShell() {
       />
 
       {editingCard && (
-        <CardModal card={editingCard} boards={sortedBoards} onClose={() => setEditingCardId(null)} />
+        <CardModal
+          card={editingCard}
+          boards={sortedBoards}
+          onRequestDelete={(c) => setConfirmDeleteCard(c)}
+          onClose={() => setEditingCardId(null)}
+        />
       )}
 
       {creatingDraft && (
@@ -380,6 +384,47 @@ function CanvasShell() {
           onCreate={handleCreateFromModal}
           onClose={() => setCreatingDraft(null)}
         />
+      )}
+
+      {confirmDeleteCard && (
+        <div
+          onClick={() => setConfirmDeleteCard(null)}
+          className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-xs bg-[var(--card)] border border-[var(--border)] rounded-[24px] shadow-2xl p-6 space-y-4"
+          >
+            <div className="space-y-1.5">
+              <h3 className="text-sm font-semibold tracking-tight">确认删除这个模块？</h3>
+              <p className="text-xs text-[var(--muted-foreground)] leading-relaxed">
+                将删除「<span className="text-[var(--foreground)] font-medium">{confirmDeleteCard.title || '未命名模块'}</span>」，删除后可在 Google 表格的 <code className="font-mono">Cards</code> 表中将 <code className="font-mono">deleted</code> 改回 <code className="font-mono">FALSE</code> 找回。
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteCard(null)}
+                className="px-3.5 py-1.5 rounded-full border border-[var(--border)] text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = confirmDeleteCard;
+                  setConfirmDeleteCard(null);
+                  if (editingCardId === target.id) setEditingCardId(null);
+                  void deleteRow('Cards', target);
+                  showToast('模块已删除');
+                }}
+                className="px-4 py-1.5 rounded-full bg-rose-600 text-white text-xs font-medium hover:bg-rose-700 cursor-pointer"
+              >
+                确认删除
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {lightboxSrc && (
