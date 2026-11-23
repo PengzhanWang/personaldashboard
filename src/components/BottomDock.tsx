@@ -27,6 +27,9 @@ export function BottomDock({
     setLinkOpen(false);
   }
 
+  const itemCls =
+    'px-3 py-1.5 rounded-full text-xs font-medium text-[var(--foreground)]/80 hover:text-[var(--foreground)] hover:bg-zinc-100 active:scale-95 flex items-center gap-1.5 transition cursor-pointer';
+
   return (
     <div className="fixed bottom-5 inset-x-0 z-40 pointer-events-none flex flex-col items-center gap-2.5 px-4">
       {linkOpen && (
@@ -70,24 +73,21 @@ export function BottomDock({
         </form>
       )}
 
-      <div className="pointer-events-auto floating-dock rounded-full px-2 py-1.5 flex items-center gap-1">
-        <button
-          type="button"
-          onClick={onAddChecklist}
-          className="px-3 py-1.5 rounded-full bg-[var(--foreground)] text-[var(--background)] text-xs font-medium flex items-center gap-1.5 hover:opacity-90 transition cursor-pointer"
-        >
-          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <div className="pointer-events-auto floating-dock rounded-full px-2 py-1.5 flex items-center gap-0.5">
+        <span className="hidden sm:inline-flex items-center pl-2.5 pr-1.5 text-[11px] text-[var(--muted-foreground)] select-none">
+          新增
+        </span>
+        <span className="hidden sm:block w-px h-4 bg-[var(--border)] mr-1" />
+
+        <button type="button" onClick={onAddChecklist} className={itemCls}>
+          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="9 11 12 14 22 4" />
             <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
           </svg>
           <span>清单</span>
         </button>
 
-        <button
-          type="button"
-          onClick={onAddNote}
-          className="px-3 py-1.5 rounded-full hover:bg-[var(--background)] text-xs font-medium flex items-center gap-1.5 transition cursor-pointer"
-        >
+        <button type="button" onClick={onAddNote} className={itemCls}>
           <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
             <polyline points="14 2 14 8 20 8" />
@@ -97,7 +97,7 @@ export function BottomDock({
           <span>笔记</span>
         </button>
 
-        <label className="px-3 py-1.5 rounded-full hover:bg-[var(--background)] text-xs font-medium flex items-center gap-1.5 transition cursor-pointer">
+        <label className={itemCls}>
           <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
             <circle cx="8.5" cy="8.5" r="1.5" />
@@ -120,9 +120,11 @@ export function BottomDock({
         <button
           type="button"
           onClick={() => setLinkOpen((v) => !v)}
-          className={`px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1.5 transition cursor-pointer ${
-            linkOpen ? 'bg-[var(--background)]' : 'hover:bg-[var(--background)]'
-          }`}
+          className={
+            linkOpen
+              ? 'px-3 py-1.5 rounded-full bg-[var(--foreground)] text-[var(--background)] text-xs font-medium flex items-center gap-1.5 transition cursor-pointer'
+              : itemCls
+          }
         >
           <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
