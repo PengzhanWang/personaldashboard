@@ -13,6 +13,14 @@ import {
 import { useStore } from '../lib/store';
 import { ulid } from '../lib/ulid';
 
+export interface CardDraft {
+  board_id: string;
+  tag: string;
+  title: string;
+  finish: CardFinish;
+  content_md: string;
+}
+
 function linkDotColor(kind: LinkKind): string {
   if (kind === 'gsheet') return '#16a34a';
   if (kind === 'gdoc') return '#2563eb';
@@ -22,22 +30,31 @@ function linkDotColor(kind: LinkKind): string {
 
 export function CardModal({
   card,
+  draft,
   boards,
+  onCreate,
   onClose,
 }: {
-  card: Row;
+  /** Existing card to edit (undefined when creating a brand-new draft). */
+  card?: Row;
+  draft?: CardDraft;
   boards: Row[];
+  onCreate?: (patch: Record<string, string>) => Promise<void>;
   onClose: () => void;
 }) {
   const { upsertRow, deleteRow, uploadImage, showToast } = useStore();
-  const [tag, setTag] = useState(card.tag || '');
-  const [title, setTitle] = useState(card.title || '');
-  const [finish, setFinish] = useState<CardFinish>((card.finish as CardFinish) || 'default');
-  const [boardId, setBoardId] = useState(card.board_id || 'main');
-  const [content, setContent] = useState(card.content_md || '');
-  const [images, setImages] = useState<CardImage[]>(() => parseCardImages(card.images_json));
-  const [links, setLinks] = useState<CardLink[]>(() => parseCardLinks(card.links_json));
-  const [sensitive, setSensitive] = useState(card.sensitive === 'TRUE');
+  const isNew = !card;
+
+  const [tag, setTag] = useState(card?.tag ?? draft?.tag ?? '模块');
+  const [title, setTitle] = useState(card?.title ?? draft?.title ?? '');
+  const [finish, setFinish] = useState<CardFinish>(
+    ((card?.finish ?? draft?.finish) as CardFinish) || 'default',
+  );
+  const [boardId, setBoardId] = useState(card?.board_id ?? draft?.board_id ?? 'main');
+  const [content, setContent] = useState(card?.content_md ?? draft?.content_md ?? '');
+  const [images, setImages] = useState<CardImage[]>(() => (card ? parseCardImages(card.images_json) : []));
+  const [links, setLinks] = useState<CardLink[]>(() => (card ? parseCardLinks(card.links_json) : []));
+  const [sensitive, setSensitive] = useState(card?.sensitive === 'TRUE');
   const [linkTitle, setLinkTitle] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -62,7 +79,6 @@ export function CardModal({
     }
   }
 
-  // Support Ctrl+V pasting screenshots directly into the modal
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
       const items = Array.from(e.clipboardData?.items || []);
@@ -72,29 +88,48 @@ export function CardModal({
         .filter((f): f is File => Boolean(f));
       if (imgFiles.length) void handleFiles(imgFiles);
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
     window.addEventListener('paste', onPaste);
-    return () => window.removeEventListener('paste', onPaste);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('paste', onPaste);
+      window.removeEventListener('keydown', onKey);
+    };
   });
 
   async function handleSave() {
-    await upsertRow(
-      'Cards',
-      {
-        board_id: boardId,
-        tag: tag.trim(),
-        title: title.trim() || '未命名模块',
-        finish,
-        content_md: content,
-        images_json: JSON.stringify(images),
-        links_json: JSON.stringify(links),
-        sensitive: sensitive ? 'TRUE' : 'FALSE',
-      },
-      card,
-    );
+    const trimmedTitle = title.trim();
+    const trimmedContent = content.trim();
+    const hasPayload = Boolean(trimmedTitle || trimmedContent || images.length || links.length);
+
+    if (isNew && !hasPayload) {
+      showToast('请先输入标题、内容、图片或链接再保存');
+      return;
+    }
+
+    const patch: Record<string, string> = {
+      board_id: boardId,
+      tag: tag.trim(),
+      title: trimmedTitle || '未命名模块',
+      finish,
+      content_md: content,
+      images_json: JSON.stringify(images),
+      links_json: JSON.stringify(links),
+      sensitive: sensitive ? 'TRUE' : 'FALSE',
+    };
+
+    if (isNew && onCreate) {
+      await onCreate(patch);
+    } else if (card) {
+      await upsertRow('Cards', patch, card);
+    }
     onClose();
   }
 
   async function handleDelete() {
+    if (!card) return;
     await deleteRow('Cards', card);
     showToast('模块已删除');
     onClose();
@@ -105,7 +140,8 @@ export function CardModal({
     const url = linkUrl.trim();
     if (!url) return;
     const kind = detectLinkKind(url);
-    const defaultLabel = kind === 'gsheet' ? 'Google Sheet' : kind === 'gdoc' ? 'Google Doc' : kind === 'gdrive' ? 'Google Drive' : '关联链接';
+    const defaultLabel =
+      kind === 'gsheet' ? 'Google Sheet' : kind === 'gdoc' ? 'Google Doc' : kind === 'gdrive' ? 'Google Drive' : '关联链接';
     setLinks((prev) => [...prev, { id: ulid(), title: linkTitle.trim() || defaultLabel, kind, url }]);
     setLinkTitle('');
     setLinkUrl('');
@@ -113,7 +149,7 @@ export function CardModal({
 
   return (
     <div
-      onClick={() => void handleSave()}
+      onClick={onClose}
       className="fixed inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4"
     >
       <div
@@ -135,18 +171,27 @@ export function CardModal({
               autoFocus
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="模块标题"
+              placeholder={isNew ? '输入模块标题（例如：超市购物清单）…' : '模块标题'}
               className="w-full bg-transparent text-base font-semibold tracking-tight focus:outline-none"
             />
           </div>
-          <button
-            type="button"
-            disabled={uploading}
-            onClick={() => void handleSave()}
-            className="px-4 py-1.5 rounded-full bg-[var(--foreground)] text-[var(--background)] text-xs font-medium cursor-pointer disabled:opacity-50"
-          >
-            完成
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 rounded-full border border-[var(--border)] text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={() => void handleSave()}
+              className="px-4 py-1.5 rounded-full bg-[var(--foreground)] text-[var(--background)] text-xs font-medium cursor-pointer disabled:opacity-50"
+            >
+              {isNew ? '创建模块' : '保存'}
+            </button>
+          </div>
         </div>
 
         {/* Body */}
@@ -251,7 +296,11 @@ export function CardModal({
                 {images.map((im, i) => (
                   <div
                     key={im.id}
-                    style={im.thumb ? { backgroundImage: `url(${im.thumb})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}
+                    style={
+                      im.thumb
+                        ? { backgroundImage: `url(${im.thumb})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+                        : undefined
+                    }
                     className="relative rounded-2xl overflow-hidden border border-[var(--border)] h-24 group bg-zinc-100"
                   >
                     <img src={`/api/image/${encodeURIComponent(im.file_id)}`} alt="" className="w-full h-full object-cover" />
@@ -333,9 +382,11 @@ export function CardModal({
               />
               <span>公司电脑模式下隐藏此模块</span>
             </label>
-            <button type="button" onClick={() => void handleDelete()} className="text-rose-500 hover:underline cursor-pointer">
-              删除模块
-            </button>
+            {!isNew && (
+              <button type="button" onClick={() => void handleDelete()} className="text-rose-500 hover:underline cursor-pointer">
+                删除模块
+              </button>
+            )}
           </div>
         </div>
       </div>

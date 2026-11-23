@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { detectLinkKind, parseCardLayout, type Row } from '../shared/schema';
+import { detectLinkKind, parseCardLayout, type CardFinish, type Row } from '../shared/schema';
 import { BentoCanvas } from './components/BentoCanvas';
 import { BottomDock } from './components/BottomDock';
-import { CardModal } from './components/CardModal';
+import { CardModal, type CardDraft } from './components/CardModal';
 import { LoginView } from './components/LoginView';
 import { StoreProvider, useStore } from './lib/store';
 import { ulid } from './lib/ulid';
@@ -13,6 +13,7 @@ function formatDateLabel(): string {
 }
 
 function formatSyncLabel(syncState: string, pendingCount: number, lastSyncedAt: number | null): string {
+  if (syncState === 'error' && pendingCount > 0) return `${pendingCount} 同步失败`;
   if (pendingCount > 0) return `${pendingCount} 待同步`;
   if (syncState === 'syncing') return '同步中';
   if (syncState === 'offline') return '离线';
@@ -42,6 +43,7 @@ function CanvasShell() {
     refresh,
     logout,
     upsertRow,
+    deleteRow,
     saveLayoutsDebounced,
     uploadImage,
   } = useStore();
@@ -49,6 +51,7 @@ function CanvasShell() {
   const [activeBoardId, setActiveBoardId] = useState<string>('main');
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
+  const [creatingDraft, setCreatingDraft] = useState<CardDraft | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [blurred, setBlurred] = useState(false);
   const [dockUploading, setDockUploading] = useState(false);
@@ -60,14 +63,12 @@ function CanvasShell() {
     return [...boards].sort((a, b) => Number(a.sort || '0') - Number(b.sort || '0'));
   }, [boards]);
 
-  // Keep activeBoardId valid when boards load or change
   useEffect(() => {
     if (!sortedBoards.some((b) => b.id === activeBoardId)) {
       setActiveBoardId(sortedBoards[0].id);
     }
   }, [sortedBoards, activeBoardId]);
 
-  // Boss key: Alt+B blurs the canvas
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.altKey && e.key.toLowerCase() === 'b') {
@@ -103,16 +104,22 @@ function CanvasShell() {
     return <LoginView />;
   }
 
-  function nextFreeY(): number {
-    return boardCards.reduce((m, c) => {
-      const l = parseCardLayout(c.layout_json);
-      return Math.max(m, l.y + l.h);
-    }, 0);
+  function nextFreeY(targetBoardId = activeBoardId): number {
+    return cards
+      .filter((c) => (c.board_id || 'main') === targetBoardId)
+      .reduce((m, c) => {
+        const l = parseCardLayout(c.layout_json);
+        return Math.max(m, l.y + l.h);
+      }, 0);
   }
 
   async function ensureBoardExists(): Promise<string> {
     if (boards.length === 0 && activeBoardId === 'main') {
-      await upsertRow('Boards', { title: '主画布', sort: '0', sensitive: 'FALSE' }, { id: 'main', version: '0', updated_at: '' } as Row);
+      await upsertRow(
+        'Boards',
+        { title: '主画布', sort: '0', sensitive: 'FALSE' },
+        { id: 'main', version: '0', updated_at: '' } as Row,
+      );
     }
     return activeBoardId;
   }
@@ -128,37 +135,61 @@ function CanvasShell() {
     setActiveBoardId(id);
   }
 
-  async function spawnCard(patch: Record<string, string>, openEditor = true) {
-    const bId = await ensureBoardExists();
-    const id = await upsertRow('Cards', {
-      board_id: bId,
-      tag: '模块',
-      title: '新建模块',
-      finish: 'default',
-      layout_json: JSON.stringify({ x: 0, y: nextFreeY(), w: 4, h: 2 }),
-      content_md: '',
-      images_json: '[]',
-      links_json: '[]',
-      sensitive: 'FALSE',
-      ...patch,
+  function openNewDraft(tag: string, finish: CardFinish, content_md: string) {
+    setEditingCardId(null);
+    setCreatingDraft({
+      board_id: activeBoardId,
+      tag,
+      title: '',
+      finish,
+      content_md,
     });
-    if (openEditor) setEditingCardId(id);
+  }
+
+  async function handleCreateFromModal(patch: Record<string, string>) {
+    const targetBoard = patch.board_id || (await ensureBoardExists());
+    await upsertRow('Cards', {
+      layout_json: JSON.stringify({ x: 0, y: nextFreeY(targetBoard), w: 4, h: 2 }),
+      ...patch,
+      board_id: targetBoard,
+    });
+    showToast('模块已创建');
+  }
+
+  async function handleDuplicateCard(card: Row) {
+    const layout = parseCardLayout(card.layout_json);
+    const targetBoard = card.board_id || activeBoardId;
+    await upsertRow('Cards', {
+      board_id: targetBoard,
+      tag: card.tag || '',
+      title: `${card.title || '未命名模块'} (副本)`,
+      finish: card.finish || 'default',
+      layout_json: JSON.stringify({ x: layout.x, y: nextFreeY(targetBoard), w: layout.w, h: layout.h }),
+      content_md: card.content_md || '',
+      images_json: card.images_json || '[]',
+      links_json: card.links_json || '[]',
+      sensitive: card.sensitive || 'FALSE',
+    });
+    showToast('已复制模块副本');
   }
 
   async function handleUploadImageCard(file: File) {
     setDockUploading(true);
     try {
       const { image, sizeKb } = await uploadImage(file);
+      const bId = await ensureBoardExists();
       const title = file.name.replace(/\.[^.]+$/, '') || '图片';
-      await spawnCard(
-        {
-          tag: '图片',
-          title,
-          layout_json: JSON.stringify({ x: 0, y: nextFreeY(), w: 4, h: 3 }),
-          images_json: JSON.stringify([image]),
-        },
-        false,
-      );
+      await upsertRow('Cards', {
+        board_id: bId,
+        tag: '图片',
+        title,
+        finish: 'default',
+        layout_json: JSON.stringify({ x: 0, y: nextFreeY(bId), w: 4, h: 3 }),
+        content_md: '',
+        images_json: JSON.stringify([image]),
+        links_json: '[]',
+        sensitive: 'FALSE',
+      });
       showToast(`已上传图片 (${sizeKb}KB)`);
     } catch (err) {
       showToast((err as Error).message || '图片上传失败');
@@ -168,28 +199,32 @@ function CanvasShell() {
   }
 
   async function handleAddLinkCard(title: string, url: string) {
+    const bId = await ensureBoardExists();
     const kind = detectLinkKind(url);
-    const tag = kind === 'gsheet' ? 'Google Sheets' : kind === 'gdoc' ? 'Google Docs' : kind === 'gdrive' ? 'Google Drive' : '链接';
+    const tag =
+      kind === 'gsheet' ? 'Google Sheets' : kind === 'gdoc' ? 'Google Docs' : kind === 'gdrive' ? 'Google Drive' : '链接';
     const label = title || (kind === 'gsheet' ? '表格' : kind === 'gdoc' ? '文档' : '快捷链接');
-    await spawnCard(
-      {
-        tag,
-        title: label,
-        layout_json: JSON.stringify({ x: 0, y: nextFreeY(), w: 3, h: 2 }),
-        links_json: JSON.stringify([{ id: ulid(), title: label, kind, url }]),
-      },
-      false,
-    );
+    await upsertRow('Cards', {
+      board_id: bId,
+      tag,
+      title: label,
+      finish: 'default',
+      layout_json: JSON.stringify({ x: 0, y: nextFreeY(bId), w: 3, h: 2 }),
+      content_md: '',
+      images_json: '[]',
+      links_json: JSON.stringify([{ id: ulid(), title: label, kind, url }]),
+      sensitive: 'FALSE',
+    });
     showToast('已添加关联文档方块');
   }
 
   const syncDot =
-    pendingCount > 0 || syncState === 'offline'
-      ? 'bg-amber-400'
-      : syncState === 'syncing'
-        ? 'bg-sky-500 animate-pulse'
-        : syncState === 'error'
-          ? 'bg-rose-500'
+    syncState === 'error'
+      ? 'bg-rose-500'
+      : pendingCount > 0 || syncState === 'offline'
+        ? 'bg-amber-400'
+        : syncState === 'syncing'
+          ? 'bg-sky-500 animate-pulse'
           : 'bg-emerald-500';
 
   return (
@@ -244,7 +279,6 @@ function CanvasShell() {
               </span>
             )}
 
-            {/* Desktop / Mobile preview switch (desktop screens only) */}
             <div className="hidden md:inline-flex items-center p-0.5 rounded-full border border-[var(--border)] bg-[var(--card)]">
               <button
                 type="button"
@@ -278,7 +312,7 @@ function CanvasShell() {
             <button
               type="button"
               onClick={() => void refresh(true)}
-              title="强制从 Google Sheets 刷新"
+              title="双向同步：推送本地改动到 Google Sheets，并拉取表格最新数据"
               className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition cursor-pointer"
             >
               <span className={`w-1.5 h-1.5 rounded-full ${syncDot}`} />
@@ -309,9 +343,19 @@ function CanvasShell() {
       <main className={`max-w-6xl mx-auto px-4 sm:px-5 pt-6 pb-28 transition ${blurred ? 'blur-lg select-none pointer-events-none' : ''}`}>
         <BentoCanvas
           cards={boardCards}
+          boards={sortedBoards}
           viewMode={viewMode}
-          onEditCard={(c) => setEditingCardId(c.id)}
+          onEmptyCreate={() => openNewDraft('清单', 'default', '- [ ] ')}
+          onEditCard={(c) => {
+            setCreatingDraft(null);
+            setEditingCardId(c.id);
+          }}
           onUpdateCard={(c, patch) => void upsertRow('Cards', patch, c)}
+          onDuplicateCard={(c) => void handleDuplicateCard(c)}
+          onDeleteCard={(c) => {
+            void deleteRow('Cards', c);
+            showToast('模块已删除');
+          }}
           onCommitLayouts={saveLayoutsDebounced}
           onOpenLightbox={setLightboxSrc}
         />
@@ -319,27 +363,23 @@ function CanvasShell() {
 
       <BottomDock
         uploading={dockUploading}
-        onAddChecklist={() =>
-          void spawnCard({
-            tag: '清单',
-            title: '新建清单',
-            content_md: '- [ ] ',
-          })
-        }
-        onAddNote={() =>
-          void spawnCard({
-            tag: '笔记',
-            title: '随手记',
-            finish: 'warm',
-            content_md: '',
-          })
-        }
+        onAddChecklist={() => openNewDraft('清单', 'default', '- [ ] ')}
+        onAddNote={() => openNewDraft('笔记', 'warm', '')}
         onUploadImageCard={(f) => void handleUploadImageCard(f)}
         onAddLinkCard={(t, u) => void handleAddLinkCard(t, u)}
       />
 
       {editingCard && (
         <CardModal card={editingCard} boards={sortedBoards} onClose={() => setEditingCardId(null)} />
+      )}
+
+      {creatingDraft && (
+        <CardModal
+          draft={creatingDraft}
+          boards={sortedBoards}
+          onCreate={handleCreateFromModal}
+          onClose={() => setCreatingDraft(null)}
+        />
       )}
 
       {lightboxSrc && (
@@ -354,7 +394,7 @@ function CanvasShell() {
       {toast && (
         <div
           onClick={clearToast}
-          className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-3.5 py-1.5 rounded-full bg-[var(--foreground)] text-[var(--background)] text-xs font-medium shadow-lg cursor-pointer"
+          className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-3.5 py-1.5 rounded-full bg-[var(--foreground)] text-[var(--background)] text-xs font-medium shadow-lg cursor-pointer max-w-[90vw] text-center"
         >
           {toast}
         </div>

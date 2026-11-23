@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  CARD_FINISHES,
   parseCardImages,
   parseCardLayout,
   parseCardLinks,
+  type CardFinish,
   type CardLayout,
   type LinkKind,
   type Row,
@@ -49,7 +51,6 @@ export function resolveLayout(entries: LayoutEntry[], anchorId: string): Map<str
     placed.push(item.box);
   }
 
-  // Compact upwards while keeping the anchor fixed
   const all = entries
     .map((e) => ({ id: e.row.id, box: map.get(e.row.id)! }))
     .sort((a, b) => a.box.y - b.box.y || a.box.x - b.box.x);
@@ -107,18 +108,32 @@ const SIZE_PRESETS: [string, number, number][] = [
   ['L', 6, 3],
 ];
 
+interface ContextMenuState {
+  card: Row;
+  x: number;
+  y: number;
+}
+
 export function BentoCanvas({
   cards,
+  boards,
   viewMode,
+  onEmptyCreate,
   onEditCard,
   onUpdateCard,
+  onDuplicateCard,
+  onDeleteCard,
   onCommitLayouts,
   onOpenLightbox,
 }: {
   cards: Row[];
+  boards: Row[];
   viewMode: 'desktop' | 'mobile';
+  onEmptyCreate: () => void;
   onEditCard: (card: Row) => void;
   onUpdateCard: (card: Row, patch: Record<string, string>) => void;
+  onDuplicateCard: (card: Row) => void;
+  onDeleteCard: (card: Row) => void;
   onCommitLayouts: (updates: { row: Row; layout: CardLayout }[]) => void;
   onOpenLightbox: (src: string) => void;
 }) {
@@ -127,9 +142,9 @@ export function BentoCanvas({
   const itemRefs = useRef(new Map<string, HTMLDivElement>());
   const [stageWidth, setStageWidth] = useState(1040);
   const [quickInputs, setQuickInputs] = useState<Record<string, string>>({});
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const justDraggedRef = useRef<string | null>(null);
 
-  // Detect narrow mobile viewport automatically too
   const [narrowScreen, setNarrowScreen] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth < 640 : false,
   );
@@ -139,6 +154,23 @@ export function BentoCanvas({
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  // Dismiss right-click context menu on outside click, scroll, or Esc
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+    };
+    window.addEventListener('click', close);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [contextMenu]);
 
   const isMobile = viewMode === 'mobile' || narrowScreen;
 
@@ -152,7 +184,7 @@ export function BentoCanvas({
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [isMobile]);
+  }, [isMobile, cards.length]);
 
   const entries = useMemo<LayoutEntry[]>(
     () => cards.map((row) => ({ row, layout: parseCardLayout(row.layout_json) })),
@@ -199,8 +231,7 @@ export function BentoCanvas({
     }
   }
 
-  function handlePresetSize(e: React.MouseEvent, card: Row, pw: number, ph: number) {
-    e.stopPropagation();
+  function applyPresetSize(card: Row, pw: number, ph: number) {
     const cur = parseCardLayout(card.layout_json);
     const updatedEntries = entries.map((item) =>
       item.row.id === card.id
@@ -267,6 +298,7 @@ export function BentoCanvas({
       if (!started) {
         if (Math.hypot(dx, dy) < 5) return;
         started = true;
+        setContextMenu(null);
         el.classList.add(isResize ? 'is-resizing' : 'is-dragging');
         document.body.classList.add('no-select');
         updatePlaceholder(startBox);
@@ -351,9 +383,8 @@ export function BentoCanvas({
     onUpdateCard(card, { content_md: lines.join('\n') });
   }
 
-  function handleQuickAdd(e: React.FormEvent, card: Row) {
-    e.preventDefault();
-    e.stopPropagation();
+  /** Commit typed inline checklist text on Enter OR onBlur so it is never lost when clicking into the card. */
+  function commitQuickInput(card: Row) {
     const val = (quickInputs[card.id] || '').trim();
     if (!val) return;
     const next = (card.content_md ? card.content_md.trimEnd() + '\n' : '') + `- [ ] ${val}`;
@@ -361,255 +392,436 @@ export function BentoCanvas({
     setQuickInputs((prev) => ({ ...prev, [card.id]: '' }));
   }
 
+  function openContextMenu(e: React.MouseEvent, card: Row) {
+    e.preventDefault();
+    e.stopPropagation();
+    const menuW = 216;
+    const menuH = 310;
+    const x = Math.min(e.clientX, window.innerWidth - menuW - 12);
+    const y = Math.min(e.clientY, window.innerHeight - menuH - 12);
+    setContextMenu({ card, x: Math.max(12, x), y: Math.max(12, y) });
+  }
+
   if (entries.length === 0) {
     return (
-      <div className="min-h-[360px] flex flex-col items-center justify-center text-center px-6">
-        <div className="w-11 h-11 rounded-2xl border border-dashed border-[var(--border)] flex items-center justify-center text-[var(--muted-foreground)] mb-3">
-          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <div className="min-h-[380px] flex flex-col items-center justify-center text-center px-6">
+        <button
+          type="button"
+          onClick={onEmptyCreate}
+          title="点击新建第一个模块"
+          className="w-12 h-12 rounded-2xl border border-dashed border-[var(--border)] bg-[var(--card)] hover:border-[var(--foreground)] hover:scale-105 active:scale-95 transition flex items-center justify-center text-[var(--muted-foreground)] hover:text-[var(--foreground)] mb-3 cursor-pointer shadow-xs"
+        >
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
-        </div>
+        </button>
         <p className="text-sm font-medium">这块画布还是空的</p>
-        <p className="text-xs text-[var(--muted-foreground)] mt-1">点击底部悬浮栏新增清单、笔记、图片或关联文档</p>
+        <p className="text-xs text-[var(--muted-foreground)] mt-1">点击上方「+」或底部悬浮栏新建模块</p>
       </div>
     );
   }
 
+  const activeMenuCard = contextMenu ? cards.find((c) => c.id === contextMenu.card.id) || contextMenu.card : null;
+  const activeMenuLayout = activeMenuCard ? parseCardLayout(activeMenuCard.layout_json) : null;
+
   return (
-    <div style={{ maxWidth: viewMode === 'mobile' ? '400px' : '100%' }} className="mx-auto transition-all duration-300">
-      <div ref={stageRef} className="bento-stage" style={{ height: `${stageHeight}px` }}>
-        <div ref={placeholderRef} className="bento-placeholder" />
+    <>
+      <div style={{ maxWidth: viewMode === 'mobile' ? '400px' : '100%' }} className="mx-auto transition-all duration-300">
+        <div ref={stageRef} className="bento-stage" style={{ height: `${stageHeight}px` }}>
+          <div ref={placeholderRef} className="bento-placeholder" />
 
-        {entries.map((entry) => {
-          const { row: card, layout } = entry;
-          const box = isMobile ? mobileRects?.get(card.id) || layout : layout;
-          const rect = gridToPx(box);
-          const images = parseCardImages(card.images_json);
-          const links = parseCardLinks(card.links_json);
-          const lines = (card.content_md || '').split('\n');
+          {entries.map((entry) => {
+            const { row: card, layout } = entry;
+            const box = isMobile ? mobileRects?.get(card.id) || layout : layout;
+            const rect = gridToPx(box);
+            const images = parseCardImages(card.images_json);
+            const links = parseCardLinks(card.links_json);
+            const lines = (card.content_md || '').split('\n');
+            const quickVal = quickInputs[card.id] || '';
 
-          let checkTotal = 0;
-          let checkDone = 0;
-          for (const l of lines) {
-            if (/^\s*-\s*\[[ xX]\]/.test(l)) {
-              checkTotal++;
-              if (/^\s*-\s*\[[xX]\]/.test(l)) checkDone++;
+            let checkTotal = 0;
+            let checkDone = 0;
+            for (const l of lines) {
+              if (/^\s*-\s*\[[ xX]\]/.test(l)) {
+                checkTotal++;
+                if (/^\s*-\s*\[[xX]\]/.test(l)) checkDone++;
+              }
             }
-          }
 
-          return (
-            <div
-              key={card.id}
-              ref={(node) => {
-                if (node) itemRefs.current.set(card.id, node);
-                else itemRefs.current.delete(card.id);
-              }}
-              style={{
-                transform: `translate3d(${rect.left}px, ${rect.top}px, 0)`,
-                width: `${rect.width}px`,
-                height: `${rect.height}px`,
-              }}
-              onPointerDown={(e) => startPointerInteraction(e, entry)}
-              onClick={(e) => {
-                if (justDraggedRef.current === card.id) return;
-                const t = e.target as HTMLElement;
-                if (t.closest('[data-check]') || t.closest('[data-lightbox]') || t.closest('a') || t.closest('input') || t.closest('[data-no-drag]')) {
-                  return;
-                }
-                onEditCard(card);
-              }}
-              className="bento-item"
-            >
-              <div className={`bento-card-inner finish-${card.finish || 'default'}`}>
-                {/* Card Header */}
-                <div className="px-5 pt-4 pb-2 flex items-start justify-between gap-2 no-select">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      {card.tag && (
-                        <span className="text-[11px] uppercase tracking-wider muted-text text-[var(--muted-foreground)] font-medium">
-                          {card.tag}
-                        </span>
-                      )}
-                      {checkTotal > 0 && (
-                        <span className="text-[11px] font-mono muted-text text-[var(--muted-foreground)]">
-                          {checkDone}/{checkTotal}
-                        </span>
-                      )}
-                      {card.sensitive === 'TRUE' && (
-                        <span className="text-[10px] px-1.5 py-0.2 rounded-full border border-[var(--border)] muted-text text-[var(--muted-foreground)]">
-                          敏感
-                        </span>
-                      )}
+            return (
+              <div
+                key={card.id}
+                ref={(node) => {
+                  if (node) itemRefs.current.set(card.id, node);
+                  else itemRefs.current.delete(card.id);
+                }}
+                style={{
+                  transform: `translate3d(${rect.left}px, ${rect.top}px, 0)`,
+                  width: `${rect.width}px`,
+                  height: `${rect.height}px`,
+                }}
+                onPointerDown={(e) => startPointerInteraction(e, entry)}
+                onContextMenu={(e) => openContextMenu(e, card)}
+                onClick={(e) => {
+                  if (justDraggedRef.current === card.id) return;
+                  const t = e.target as HTMLElement;
+                  if (
+                    t.closest('[data-check]') ||
+                    t.closest('[data-lightbox]') ||
+                    t.closest('a') ||
+                    t.closest('input') ||
+                    t.closest('[data-no-drag]')
+                  ) {
+                    return;
+                  }
+                  onEditCard(card);
+                }}
+                className="bento-item"
+              >
+                <div className={`bento-card-inner finish-${card.finish || 'default'}`}>
+                  {/* Card Header */}
+                  <div className="px-5 pt-4 pb-2 flex items-start justify-between gap-2 no-select">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        {card.tag && (
+                          <span className="text-[11px] uppercase tracking-wider muted-text text-[var(--muted-foreground)] font-medium">
+                            {card.tag}
+                          </span>
+                        )}
+                        {checkTotal > 0 && (
+                          <span className="text-[11px] font-mono muted-text text-[var(--muted-foreground)]">
+                            {checkDone}/{checkTotal}
+                          </span>
+                        )}
+                        {card.sensitive === 'TRUE' && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded-full border border-[var(--border)] muted-text text-[var(--muted-foreground)]">
+                            敏感
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="font-semibold text-[15px] tracking-tight truncate mt-0.5">{card.title || '未命名模块'}</h3>
                     </div>
-                    <h3 className="font-semibold text-[15px] tracking-tight truncate mt-0.5">{card.title || '未命名模块'}</h3>
+
+                    <button
+                      type="button"
+                      data-no-drag="1"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEditCard(card);
+                      }}
+                      title="编辑模块（右键更多操作）"
+                      className="hover-controls p-1.5 rounded-full subtle-pill bg-[var(--background)] border border-[var(--border)] hover:opacity-80 cursor-pointer shrink-0"
+                    >
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                      </svg>
+                    </button>
                   </div>
 
-                  <button
-                    type="button"
-                    data-no-drag="1"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEditCard(card);
-                    }}
-                    title="编辑模块"
-                    className="hover-controls p-1.5 rounded-full subtle-pill bg-[var(--background)] border border-[var(--border)] hover:opacity-80 cursor-pointer shrink-0"
-                  >
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 20h9" />
-                      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-                    </svg>
-                  </button>
-                </div>
-
-                {/* Card Content Surface */}
-                <div className="px-5 pb-4 flex-1 flex flex-col gap-1 overflow-y-auto card-scroll">
-                  <div className="space-y-0.5">
-                    {lines.map((line, idx) => {
-                      const unchecked = line.match(/^\s*-\s*\[ \]\s*(.*)$/);
-                      if (unchecked) {
+                  {/* Card Content Surface */}
+                  <div className="px-5 pb-4 flex-1 flex flex-col gap-1 overflow-y-auto card-scroll">
+                    <div className="space-y-0.5">
+                      {lines.map((line, idx) => {
+                        const unchecked = line.match(/^\s*-\s*\[ \]\s*(.*)$/);
+                        if (unchecked) {
+                          return (
+                            <div
+                              key={idx}
+                              data-check="1"
+                              onClick={(e) => toggleChecklistLine(e, card, idx)}
+                              className="flex items-start gap-2.5 py-0.5 cursor-pointer"
+                            >
+                              <span className="check-box" />
+                              <span className="text-xs leading-relaxed break-words">{unchecked[1]}</span>
+                            </div>
+                          );
+                        }
+                        const checked = line.match(/^\s*-\s*\[[xX]\]\s*(.*)$/);
+                        if (checked) {
+                          return (
+                            <div
+                              key={idx}
+                              data-check="1"
+                              onClick={(e) => toggleChecklistLine(e, card, idx)}
+                              className="flex items-start gap-2.5 py-0.5 cursor-pointer opacity-50"
+                            >
+                              <span className="check-box checked">
+                                <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                              </span>
+                              <span className="text-xs leading-relaxed line-through break-words">{checked[1]}</span>
+                            </div>
+                          );
+                        }
+                        if (!line.trim()) return null;
                         return (
-                          <div
-                            key={idx}
-                            data-check="1"
-                            onClick={(e) => toggleChecklistLine(e, card, idx)}
-                            className="flex items-start gap-2.5 py-0.5 cursor-pointer"
-                          >
-                            <span className="check-box" />
-                            <span className="text-xs leading-relaxed break-words">{unchecked[1]}</span>
-                          </div>
-                        );
-                      }
-                      const checked = line.match(/^\s*-\s*\[[xX]\]\s*(.*)$/);
-                      if (checked) {
-                        return (
-                          <div
-                            key={idx}
-                            data-check="1"
-                            onClick={(e) => toggleChecklistLine(e, card, idx)}
-                            className="flex items-start gap-2.5 py-0.5 cursor-pointer opacity-50"
-                          >
-                            <span className="check-box checked">
-                              <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="20 6 9 17 4 12" />
-                              </svg>
-                            </span>
-                            <span className="text-xs leading-relaxed line-through break-words">{checked[1]}</span>
-                          </div>
-                        );
-                      }
-                      if (!line.trim()) return null;
-                      return (
-                        <p key={idx} className="text-xs muted-text text-[var(--muted-foreground)] leading-relaxed break-words">
-                          {line}
-                        </p>
-                      );
-                    })}
-                  </div>
-
-                  {/* Images Grid */}
-                  {images.length > 0 && (
-                    <div className={`grid ${images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'} gap-2 mt-2`}>
-                      {images.slice(0, 4).map((im) => {
-                        const fullUrl = `/api/image/${encodeURIComponent(im.file_id)}`;
-                        return (
-                          <div
-                            key={im.id}
-                            data-lightbox="1"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onOpenLightbox(fullUrl);
-                            }}
-                            style={im.thumb ? { backgroundImage: `url(${im.thumb})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}
-                            className="relative rounded-2xl overflow-hidden border border-[var(--border)] h-24 cursor-zoom-in group/img bg-zinc-100"
-                          >
-                            <img
-                              src={fullUrl}
-                              alt={im.caption || ''}
-                              loading="lazy"
-                              draggable={false}
-                              className="w-full h-full object-cover group-hover/img:scale-105 transition duration-300"
-                            />
-                          </div>
+                          <p key={idx} className="text-xs muted-text text-[var(--muted-foreground)] leading-relaxed break-words">
+                            {line}
+                          </p>
                         );
                       })}
                     </div>
-                  )}
 
-                  {/* Quick inline checklist add */}
-                  <form onSubmit={(e) => handleQuickAdd(e, card)} data-no-drag="1" className="mt-1">
-                    <input
-                      type="text"
-                      value={quickInputs[card.id] || ''}
-                      onChange={(e) => setQuickInputs((prev) => ({ ...prev, [card.id]: e.target.value }))}
-                      placeholder="+ 添加一条…"
-                      className="w-full bg-transparent text-xs py-1 focus:outline-none placeholder:opacity-45 border-b border-transparent focus:border-[var(--border)]"
-                    />
-                  </form>
+                    {/* Images Grid */}
+                    {images.length > 0 && (
+                      <div className={`grid ${images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'} gap-2 mt-2`}>
+                        {images.slice(0, 4).map((im) => {
+                          const fullUrl = `/api/image/${encodeURIComponent(im.file_id)}`;
+                          return (
+                            <div
+                              key={im.id}
+                              data-lightbox="1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenLightbox(fullUrl);
+                              }}
+                              style={
+                                im.thumb
+                                  ? { backgroundImage: `url(${im.thumb})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+                                  : undefined
+                              }
+                              className="relative rounded-2xl overflow-hidden border border-[var(--border)] h-24 cursor-zoom-in group/img bg-zinc-100"
+                            >
+                              <img
+                                src={fullUrl}
+                                alt={im.caption || ''}
+                                loading="lazy"
+                                draggable={false}
+                                className="w-full h-full object-cover group-hover/img:scale-105 transition duration-300"
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
 
-                  {/* Linked Docs / Sheets Chips */}
-                  {links.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 pt-2.5 mt-auto">
-                      {links.map((l) => (
-                        <a
-                          key={l.id}
-                          href={l.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          data-no-drag="1"
-                          className="subtle-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-[var(--background)] border border-[var(--border)] hover:opacity-75 transition max-w-full"
+                    {/* Quick inline checklist add (auto-commits on Enter OR blur) */}
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        commitQuickInput(card);
+                      }}
+                      data-no-drag="1"
+                      className="mt-1 flex items-center gap-1"
+                    >
+                      <input
+                        type="text"
+                        value={quickVal}
+                        onChange={(e) => setQuickInputs((prev) => ({ ...prev, [card.id]: e.target.value }))}
+                        onBlur={() => commitQuickInput(card)}
+                        placeholder="+ 快速加一条清单（回车确认）…"
+                        className="flex-1 bg-transparent text-xs py-1 focus:outline-none placeholder:opacity-45 border-b border-transparent focus:border-[var(--border)] min-w-0"
+                      />
+                      {quickVal.trim() && (
+                        <button
+                          type="submit"
+                          onMouseDown={(e) => e.preventDefault()}
+                          className="px-1.5 py-0.5 rounded text-[11px] bg-[var(--foreground)] text-[var(--background)] cursor-pointer shrink-0"
                         >
-                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: linkDotColor(l.kind) }} />
-                          <span className="truncate font-medium">{l.title}</span>
-                          <svg className="w-3 h-3 opacity-45 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <line x1="7" y1="17" x2="17" y2="7" />
-                            <polyline points="7 7 17 7 17 17" />
-                          </svg>
-                        </a>
-                      ))}
-                    </div>
+                          ↵
+                        </button>
+                      )}
+                    </form>
+
+                    {/* Linked Docs / Sheets Chips */}
+                    {links.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-2.5 mt-auto">
+                        {links.map((l) => (
+                          <a
+                            key={l.id}
+                            href={l.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            data-no-drag="1"
+                            className="subtle-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-[var(--background)] border border-[var(--border)] hover:opacity-75 transition max-w-full"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: linkDotColor(l.kind) }} />
+                            <span className="truncate font-medium">{l.title}</span>
+                            <svg className="w-3 h-3 opacity-45 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <line x1="7" y1="17" x2="17" y2="7" />
+                              <polyline points="7 7 17 7 17 17" />
+                            </svg>
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Desktop Hover Size Pill + Corner Resize Grip */}
+                  {!isMobile && (
+                    <>
+                      <div
+                        data-no-drag="1"
+                        className="hover-controls absolute bottom-2.5 left-1/2 -translate-x-1/2 flex items-center gap-0.5 px-1.5 py-1 rounded-full bg-[var(--foreground)] text-[var(--background)] shadow-lg"
+                      >
+                        {SIZE_PRESETS.map(([label, pw, ph]) => (
+                          <button
+                            key={label}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              applyPresetSize(card, pw, ph);
+                            }}
+                            className={`px-2 py-0.5 rounded-full text-[11px] font-medium cursor-pointer transition ${
+                              layout.w === pw && layout.h === ph
+                                ? 'bg-[var(--background)] text-[var(--foreground)]'
+                                : 'opacity-70 hover:opacity-100'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div
+                        data-resize="1"
+                        title="拖拽缩放尺寸"
+                        className="hover-controls no-select absolute right-1.5 bottom-1.5 w-6 h-6 flex items-center justify-center cursor-nwse-resize opacity-60 hover:opacity-100"
+                      >
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                          <path d="M13 6L6 13M13 10.5L10.5 13" />
+                        </svg>
+                      </div>
+                    </>
                   )}
                 </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
-                {/* Desktop Hover Size Pill + Corner Resize Grip */}
-                {!isMobile && (
-                  <>
-                    <div
-                      data-no-drag="1"
-                      className="hover-controls absolute bottom-2.5 left-1/2 -translate-x-1/2 flex items-center gap-0.5 px-1.5 py-1 rounded-full bg-[var(--foreground)] text-[var(--background)] shadow-lg"
-                    >
-                      {SIZE_PRESETS.map(([label, pw, ph]) => (
-                        <button
-                          key={label}
-                          type="button"
-                          onClick={(e) => handlePresetSize(e, card, pw, ph)}
-                          className={`px-2 py-0.5 rounded-full text-[11px] font-medium cursor-pointer transition ${
-                            layout.w === pw && layout.h === ph
-                              ? 'bg-[var(--background)] text-[var(--foreground)]'
-                              : 'opacity-70 hover:opacity-100'
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
+      {/* Right-Click Context Menu */}
+      {contextMenu && activeMenuCard && activeMenuLayout && (
+        <div
+          style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
+          onClick={(e) => e.stopPropagation()}
+          className="fixed z-50 w-54 rounded-2xl bg-[var(--card)] border border-[var(--border)] shadow-2xl p-1.5 text-xs space-y-1"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              onEditCard(activeMenuCard);
+              setContextMenu(null);
+            }}
+            className="w-full text-left px-3 py-2 rounded-xl hover:bg-[var(--background)] flex items-center justify-between cursor-pointer"
+          >
+            <span>编辑模块</span>
+            <span className="text-[11px] text-[var(--muted-foreground)]">点击</span>
+          </button>
 
-                    <div
-                      data-resize="1"
-                      title="拖拽缩放尺寸"
-                      className="hover-controls no-select absolute right-1.5 bottom-1.5 w-6 h-6 flex items-center justify-center cursor-nwse-resize opacity-60 hover:opacity-100"
-                    >
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-                        <path d="M13 6L6 13M13 10.5L10.5 13" />
-                      </svg>
-                    </div>
-                  </>
-                )}
+          <button
+            type="button"
+            onClick={() => {
+              onDuplicateCard(activeMenuCard);
+              setContextMenu(null);
+            }}
+            className="w-full text-left px-3 py-2 rounded-xl hover:bg-[var(--background)] flex items-center justify-between cursor-pointer"
+          >
+            <span>复制副本</span>
+          </button>
+
+          {/* Finish Swatches */}
+          <div className="px-3 py-2 border-t border-[var(--border)] flex items-center justify-between">
+            <span className="text-[var(--muted-foreground)]">质感</span>
+            <div className="flex items-center gap-1.5">
+              {CARD_FINISHES.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  title={f.label}
+                  onClick={() => {
+                    onUpdateCard(activeMenuCard, { finish: f.id as CardFinish });
+                    setContextMenu(null);
+                  }}
+                  style={{ background: f.dot, borderColor: f.border }}
+                  className={`w-4.5 h-4.5 rounded-full border cursor-pointer transition ${
+                    (activeMenuCard.finish || 'default') === f.id ? 'ring-2 ring-offset-1 ring-[var(--foreground)]' : ''
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Quick Sizes */}
+          {!isMobile && (
+            <div className="px-3 py-1.5 flex items-center justify-between">
+              <span className="text-[var(--muted-foreground)]">尺寸</span>
+              <div className="flex items-center gap-1">
+                {SIZE_PRESETS.map(([label, pw, ph]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => {
+                      applyPresetSize(activeMenuCard, pw, ph);
+                      setContextMenu(null);
+                    }}
+                    className={`px-2 py-0.5 rounded-lg border text-[11px] cursor-pointer ${
+                      activeMenuLayout.w === pw && activeMenuLayout.h === ph
+                        ? 'bg-[var(--foreground)] text-[var(--background)] border-[var(--foreground)]'
+                        : 'border-[var(--border)] hover:bg-[var(--background)]'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
             </div>
-          );
-        })}
-      </div>
-    </div>
+          )}
+
+          {/* Move to another board */}
+          {boards.length > 1 && (
+            <div className="px-3 py-1.5 border-t border-[var(--border)] space-y-1">
+              <span className="text-[11px] text-[var(--muted-foreground)] block">移动到画布</span>
+              <div className="flex flex-wrap gap-1">
+                {boards
+                  .filter((b) => b.id !== (activeMenuCard.board_id || 'main'))
+                  .map((b) => (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => {
+                        onUpdateCard(activeMenuCard, { board_id: b.id });
+                        setContextMenu(null);
+                      }}
+                      className="px-2 py-0.5 rounded-lg bg-[var(--background)] border border-[var(--border)] hover:border-[var(--foreground)] cursor-pointer"
+                    >
+                      {b.title}
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              onUpdateCard(activeMenuCard, {
+                sensitive: activeMenuCard.sensitive === 'TRUE' ? 'FALSE' : 'TRUE',
+              });
+              setContextMenu(null);
+            }}
+            className="w-full text-left px-3 py-2 rounded-xl hover:bg-[var(--background)] border-t border-[var(--border)] cursor-pointer"
+          >
+            {activeMenuCard.sensitive === 'TRUE' ? '取消敏感标记' : '设为敏感（公司隐藏）'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              onDeleteCard(activeMenuCard);
+              setContextMenu(null);
+            }}
+            className="w-full text-left px-3 py-2 rounded-xl hover:bg-rose-50 text-rose-600 cursor-pointer"
+          >
+            删除模块
+          </button>
+        </div>
+      )}
+    </>
   );
 }

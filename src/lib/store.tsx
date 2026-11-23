@@ -156,6 +156,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const res = await apiMutate(batch);
       const doneIds = new Set<string>();
       let hadOverwrite = false;
+      let firstError: string | null = null;
 
       for (const r of res.results) {
         const orig = batch.find((m) => m.mutation_id === r.mutation_id);
@@ -164,6 +165,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           if (orig.op === 'delete') mergeServerRow(orig.table, undefined, orig.row_id);
           else if (r.row) mergeServerRow(orig.table, r.row);
           if (r.overwritten && Object.keys(r.overwritten).length > 0) hadOverwrite = true;
+        } else if (r.status === 'error' && !firstError) {
+          firstError = r.error || '服务端拒绝写入';
         }
       }
 
@@ -174,7 +177,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       setLastSyncedAt(Date.now());
       setSyncState(remaining.length ? 'error' : 'synced');
-      if (hadOverwrite) showToast('已覆盖另一设备的修改（旧值已记入 _Log）');
+      if (firstError) {
+        if (firstError.includes('unknown table')) {
+          showToast('同步失败：Apps Script 还是旧版本，请在“管理部署”里发布新版本');
+        } else {
+          showToast(`同步失败：${firstError}`);
+        }
+      } else if (hadOverwrite) {
+        showToast('已覆盖另一设备的修改（旧值已记入 _Log）');
+      }
     } catch (e) {
       if (e instanceof AuthError) {
         setAuthState('unauthed');
