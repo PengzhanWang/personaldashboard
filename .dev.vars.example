@@ -1,0 +1,6 @@
+# Copy to .dev.vars for local `wrangler dev` testing (never commit .dev.vars).
+APP_PASSWORD=dev-password-change-me
+SESSION_SECRET=local-dev-session-secret-32-chars-min
+# Leave GAS_URL empty to use the local KV mock backend.
+GAS_URL=
+GAS_HMAC_SECRET=
