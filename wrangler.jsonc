@@ -12,8 +12,7 @@
   "kv_namespaces": [
     {
       "binding": "KV",
-      // Replace with your real KV namespace ID from `npx wrangler kv namespace create KV`
-      "id": "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+      "id": "120360839a8a4c2db64fa225592be6b5"
     }
   ]
 }
