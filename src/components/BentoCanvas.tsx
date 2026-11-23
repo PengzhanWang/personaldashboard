@@ -118,7 +118,6 @@ export function BentoCanvas({
   cards,
   boards,
   viewMode,
-  onEmptyCreate,
   onEditCard,
   onUpdateCard,
   onDuplicateCard,
@@ -129,7 +128,6 @@ export function BentoCanvas({
   cards: Row[];
   boards: Row[];
   viewMode: 'desktop' | 'mobile';
-  onEmptyCreate: () => void;
   onEditCard: (card: Row) => void;
   onUpdateCard: (card: Row, patch: Record<string, string>) => void;
   onDuplicateCard: (card: Row) => void;
@@ -404,20 +402,9 @@ export function BentoCanvas({
 
   if (entries.length === 0) {
     return (
-      <div className="min-h-[380px] flex flex-col items-center justify-center text-center px-6">
-        <button
-          type="button"
-          onClick={onEmptyCreate}
-          title="点击新建第一个模块"
-          className="w-12 h-12 rounded-2xl border border-dashed border-[var(--border)] bg-[var(--card)] hover:border-[var(--foreground)] hover:scale-105 active:scale-95 transition flex items-center justify-center text-[var(--muted-foreground)] hover:text-[var(--foreground)] mb-3 cursor-pointer shadow-xs"
-        >
-          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        </button>
-        <p className="text-sm font-medium">这块画布还是空的</p>
-        <p className="text-xs text-[var(--muted-foreground)] mt-1">点击上方「+」或底部悬浮栏新建模块</p>
+      <div className="min-h-[420px] flex flex-col items-center justify-center text-center px-6 select-none">
+        <p className="text-sm font-medium text-[var(--foreground)]/80">这块画布还是空的</p>
+        <p className="text-xs text-[var(--muted-foreground)] mt-1.5">从下方悬浮栏选择清单、笔记、图片或关联文档开始记录</p>
       </div>
     );
   }

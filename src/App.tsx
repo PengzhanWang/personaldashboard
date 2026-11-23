@@ -347,7 +347,6 @@ function CanvasShell() {
           cards={boardCards}
           boards={sortedBoards}
           viewMode={viewMode}
-          onEmptyCreate={() => openNewDraft('清单', 'default', '- [ ] ')}
           onEditCard={(c) => {
             setCreatingDraft(null);
             setEditingCardId(c.id);
