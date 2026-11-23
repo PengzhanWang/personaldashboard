@@ -19,8 +19,9 @@ export function BottomDock({
 
   function submitLink(e: React.FormEvent) {
     e.preventDefault();
-    const u = linkUrl.trim();
-    if (!u) return;
+    const raw = linkUrl.trim();
+    if (!raw) return;
+    const u = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
     onAddLinkCard(linkTitle.trim(), u);
     setLinkTitle('');
     setLinkUrl('');
@@ -46,7 +47,7 @@ export function BottomDock({
           />
           <span className="w-px h-5 bg-[var(--border)]" />
           <input
-            type="url"
+            type="text"
             required
             autoFocus
             value={linkUrl}

@@ -120,6 +120,7 @@ export function BentoCanvas({
   viewMode,
   onEditCard,
   onUpdateCard,
+  onMoveCardToBoard,
   onDuplicateCard,
   onDeleteCard,
   onCommitLayouts,
@@ -130,6 +131,7 @@ export function BentoCanvas({
   viewMode: 'desktop' | 'mobile';
   onEditCard: (card: Row) => void;
   onUpdateCard: (card: Row, patch: Record<string, string>) => void;
+  onMoveCardToBoard: (card: Row, targetBoardId: string) => void;
   onDuplicateCard: (card: Row) => void;
   onDeleteCard: (card: Row) => void;
   onCommitLayouts: (updates: { row: Row; layout: CardLayout }[]) => void;
@@ -462,6 +464,10 @@ export function BentoCanvas({
                   ) {
                     return;
                   }
+                  if (document.activeElement instanceof HTMLInputElement && document.activeElement.dataset.quickInput) {
+                    document.activeElement.blur();
+                    return;
+                  }
                   onEditCard(card);
                 }}
                 className="bento-item"
@@ -490,21 +496,34 @@ export function BentoCanvas({
                       <h3 className="font-semibold text-[15px] tracking-tight truncate mt-0.5">{card.title || '未命名模块'}</h3>
                     </div>
 
-                    <button
-                      type="button"
-                      data-no-drag="1"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEditCard(card);
-                      }}
-                      title="编辑模块（右键更多操作）"
-                      className="hover-controls p-1.5 rounded-full subtle-pill bg-[var(--background)] border border-[var(--border)] hover:opacity-80 cursor-pointer shrink-0"
-                    >
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 20h9" />
-                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-                      </svg>
-                    </button>
+                    <div data-no-drag="1" className={`flex items-center gap-1 shrink-0 ${isMobile ? '' : 'hover-controls'}`}>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEditCard(card);
+                        }}
+                        title="编辑模块"
+                        className="p-1.5 rounded-full subtle-pill bg-[var(--background)] border border-[var(--border)] hover:opacity-80 cursor-pointer"
+                      >
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 20h9" />
+                          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => openContextMenu(e, card)}
+                        title="更多操作（也可右键卡片）"
+                        className="p-1.5 rounded-full subtle-pill bg-[var(--background)] border border-[var(--border)] hover:opacity-80 cursor-pointer"
+                      >
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                          <circle cx="5" cy="12" r="1.8" />
+                          <circle cx="12" cy="12" r="1.8" />
+                          <circle cx="19" cy="12" r="1.8" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Card Content Surface */}
@@ -597,6 +616,7 @@ export function BentoCanvas({
                     >
                       <input
                         type="text"
+                        data-quick-input="1"
                         value={quickVal}
                         onChange={(e) => setQuickInputs((prev) => ({ ...prev, [card.id]: e.target.value }))}
                         onBlur={() => commitQuickInput(card)}
@@ -772,7 +792,7 @@ export function BentoCanvas({
                       key={b.id}
                       type="button"
                       onClick={() => {
-                        onUpdateCard(activeMenuCard, { board_id: b.id });
+                        onMoveCardToBoard(activeMenuCard, b.id);
                         setContextMenu(null);
                       }}
                       className="px-2 py-0.5 rounded-lg bg-[var(--background)] border border-[var(--border)] hover:border-[var(--foreground)] cursor-pointer"

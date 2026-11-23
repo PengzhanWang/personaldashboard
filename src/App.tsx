@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { detectLinkKind, parseCardLayout, type CardFinish, type Row } from '../shared/schema';
 import { BentoCanvas } from './components/BentoCanvas';
+import { BoardModal } from './components/BoardModal';
 import { BottomDock } from './components/BottomDock';
 import { CardModal, type CardDraft } from './components/CardModal';
 import { LoginView } from './components/LoginView';
+import { SearchModal } from './components/SearchModal';
 import { StoreProvider, useStore } from './lib/store';
 import { ulid } from './lib/ulid';
 
@@ -44,6 +46,7 @@ function CanvasShell() {
     logout,
     upsertRow,
     deleteRow,
+    mutateBatch,
     saveLayoutsDebounced,
     uploadImage,
   } = useStore();
@@ -52,14 +55,23 @@ function CanvasShell() {
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [creatingDraft, setCreatingDraft] = useState<CardDraft | null>(null);
+  const [boardModal, setBoardModal] = useState<'new' | Row | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [confirmDeleteCard, setConfirmDeleteCard] = useState<Row | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [blurred, setBlurred] = useState(false);
   const [dockUploading, setDockUploading] = useState(false);
+  const [, setClockTick] = useState(0);
+
+  // Refresh relative sync label ("2m 前") every 30s
+  useEffect(() => {
+    const id = window.setInterval(() => setClockTick((n) => n + 1), 30000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const sortedBoards = useMemo(() => {
     if (boards.length === 0) {
-      return [{ id: 'main', title: '主画布', version: '0', updated_at: '', sort: '0' } as Row];
+      return [{ id: 'main', title: '主画布', version: '0', updated_at: '', sort: '0', sensitive: 'FALSE' } as Row];
     }
     return [...boards].sort((a, b) => Number(a.sort || '0') - Number(b.sort || '0'));
   }, [boards]);
@@ -70,11 +82,15 @@ function CanvasShell() {
     }
   }, [sortedBoards, activeBoardId]);
 
+  // Global keyboard shortcuts: Alt+B privacy blur, Ctrl/Cmd+K quick search, Esc close overlays
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.altKey && e.key.toLowerCase() === 'b') {
         e.preventDefault();
         setBlurred((v) => !v);
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && authState === 'authed') {
+        e.preventDefault();
+        setSearchOpen((v) => !v);
       } else if (e.key === 'Escape') {
         if (confirmDeleteCard) setConfirmDeleteCard(null);
         else if (lightboxSrc) setLightboxSrc(null);
@@ -82,7 +98,7 @@ function CanvasShell() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [lightboxSrc, confirmDeleteCard]);
+  }, [authState, lightboxSrc, confirmDeleteCard]);
 
   const boardCards = useMemo(
     () => cards.filter((c) => (c.board_id || 'main') === activeBoardId),
@@ -106,9 +122,9 @@ function CanvasShell() {
     return <LoginView />;
   }
 
-  function nextFreeY(targetBoardId = activeBoardId): number {
+  function nextFreeY(targetBoardId = activeBoardId, excludeCardId?: string): number {
     return cards
-      .filter((c) => (c.board_id || 'main') === targetBoardId)
+      .filter((c) => (c.board_id || 'main') === targetBoardId && c.id !== excludeCardId)
       .reduce((m, c) => {
         const l = parseCardLayout(c.layout_json);
         return Math.max(m, l.y + l.h);
@@ -126,15 +142,64 @@ function CanvasShell() {
     return activeBoardId;
   }
 
-  async function handleNewBoard() {
-    const name = window.prompt('输入新画布名称：', '新画布');
-    if (!name || !name.trim()) return;
-    const id = await upsertRow('Boards', {
-      title: name.trim(),
-      sort: String(boards.length),
-      sensitive: 'FALSE',
-    });
-    setActiveBoardId(id);
+  async function handleSaveBoard(data: { title: string; sensitive: boolean }) {
+    if (boardModal === 'new') {
+      await ensureBoardExists();
+      const id = await upsertRow('Boards', {
+        title: data.title,
+        sort: String(sortedBoards.length),
+        sensitive: data.sensitive ? 'TRUE' : 'FALSE',
+      });
+      setActiveBoardId(id);
+      showToast(`已创建画布「${data.title}」`);
+    } else if (boardModal) {
+      await upsertRow(
+        'Boards',
+        {
+          title: data.title,
+          sensitive: data.sensitive ? 'TRUE' : 'FALSE',
+        },
+        boardModal,
+      );
+      showToast('画布设置已保存');
+    }
+  }
+
+  async function handleDeleteBoard(board: Row, moveCardsToBoardId: string | null) {
+    const affected = cards.filter((c) => (c.board_id || 'main') === board.id);
+    const ops: { table: 'Boards' | 'Cards'; op: 'upsert' | 'delete'; row: Row; patch?: Record<string, string> }[] = [];
+
+    if (moveCardsToBoardId) {
+      let yCursor = nextFreeY(moveCardsToBoardId);
+      for (const c of affected) {
+        const l = parseCardLayout(c.layout_json);
+        ops.push({
+          table: 'Cards',
+          op: 'upsert',
+          row: c,
+          patch: {
+            board_id: moveCardsToBoardId,
+            layout_json: JSON.stringify({ ...l, x: 0, y: yCursor }),
+          },
+        });
+        yCursor += l.h;
+      }
+    } else {
+      for (const c of affected) {
+        ops.push({ table: 'Cards', op: 'delete', row: c });
+      }
+    }
+
+    ops.push({ table: 'Boards', op: 'delete', row: board });
+    await mutateBatch(ops);
+
+    const fallback = sortedBoards.find((b) => b.id !== board.id);
+    if (fallback) setActiveBoardId(moveCardsToBoardId || fallback.id);
+    showToast(
+      moveCardsToBoardId && affected.length
+        ? `已删除画布，并转移 ${affected.length} 个模块`
+        : `已删除画布「${board.title}」`,
+    );
   }
 
   function openNewDraft(tag: string, finish: CardFinish, content_md: string) {
@@ -156,6 +221,32 @@ function CanvasShell() {
       board_id: targetBoard,
     });
     showToast('模块已创建');
+  }
+
+  async function handleSaveExistingCard(card: Row, patch: Record<string, string>) {
+    const nextPatch = { ...patch };
+    const prevBoard = card.board_id || 'main';
+    const nextBoard = patch.board_id || prevBoard;
+    // If moved to a different board, place at a clean free y-slot so it never overlaps
+    if (nextBoard !== prevBoard) {
+      const curLayout = parseCardLayout(card.layout_json);
+      nextPatch.layout_json = JSON.stringify({ ...curLayout, x: 0, y: nextFreeY(nextBoard, card.id) });
+    }
+    await upsertRow('Cards', nextPatch, card);
+  }
+
+  async function handleMoveCardToBoard(card: Row, targetBoardId: string) {
+    const curLayout = parseCardLayout(card.layout_json);
+    await upsertRow(
+      'Cards',
+      {
+        board_id: targetBoardId,
+        layout_json: JSON.stringify({ ...curLayout, x: 0, y: nextFreeY(targetBoardId, card.id) }),
+      },
+      card,
+    );
+    const targetTitle = sortedBoards.find((b) => b.id === targetBoardId)?.title || '目标画布';
+    showToast(`已移动到「${targetTitle}」`);
   }
 
   async function handleDuplicateCard(card: Row) {
@@ -229,6 +320,11 @@ function CanvasShell() {
           ? 'bg-sky-500 animate-pulse'
           : 'bg-emerald-500';
 
+  const modalBoardCardCount =
+    boardModal && boardModal !== 'new'
+      ? cards.filter((c) => (c.board_id || 'main') === boardModal.id).length
+      : 0;
+
   return (
     <div className="min-h-screen canvas-dots">
       {/* Minimal Editorial Header */}
@@ -243,24 +339,50 @@ function CanvasShell() {
               <span className="hidden md:inline text-xs text-[var(--muted-foreground)]">/ {formatDateLabel()}</span>
             </div>
 
+            {/* Board Tabs (click to switch, right-click or gear icon on active tab to rename/delete) */}
             <nav className="flex items-center gap-1 overflow-x-auto">
-              {sortedBoards.map((b) => (
-                <button
-                  key={b.id}
-                  type="button"
-                  onClick={() => setActiveBoardId(b.id)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition cursor-pointer shrink-0 ${
-                    activeBoardId === b.id
-                      ? 'bg-[var(--foreground)] text-[var(--background)]'
-                      : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)]'
-                  }`}
-                >
-                  {b.title}
-                </button>
-              ))}
+              {sortedBoards.map((b) => {
+                const isActive = activeBoardId === b.id;
+                return (
+                  <div
+                    key={b.id}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setBoardModal(b);
+                    }}
+                    className={`inline-flex items-center rounded-full text-xs font-medium transition shrink-0 ${
+                      isActive
+                        ? 'bg-[var(--foreground)] text-[var(--background)]'
+                        : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)]'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setActiveBoardId(b.id)}
+                      title="右键或点击右侧图标管理画布"
+                      className={`py-1 cursor-pointer ${isActive ? 'pl-3 pr-1.5' : 'px-3'}`}
+                    >
+                      {b.title}
+                    </button>
+                    {isActive && (
+                      <button
+                        type="button"
+                        onClick={() => setBoardModal(b)}
+                        title="画布设置（重命名 / 敏感 / 删除）"
+                        className="pr-2.5 pl-0.5 py-1 opacity-65 hover:opacity-100 cursor-pointer"
+                      >
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="3" />
+                          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
               <button
                 type="button"
-                onClick={() => void handleNewBoard()}
+                onClick={() => setBoardModal('new')}
                 title="新建画布"
                 className="w-6 h-6 rounded-full border border-dashed border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] flex items-center justify-center text-xs cursor-pointer shrink-0"
               >
@@ -280,6 +402,19 @@ function CanvasShell() {
                 Mock
               </span>
             )}
+
+            {/* Global Search */}
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              title="搜索所有模块 (Ctrl+K)"
+              className="p-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition cursor-pointer"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+            </button>
 
             <div className="hidden md:inline-flex items-center p-0.5 rounded-full border border-[var(--border)] bg-[var(--card)]">
               <button
@@ -342,7 +477,7 @@ function CanvasShell() {
       </header>
 
       {/* Main Bento Canvas */}
-      <main className={`max-w-6xl mx-auto px-4 sm:px-5 pt-6 pb-28 transition ${blurred ? 'blur-lg select-none pointer-events-none' : ''}`}>
+      <main className={`max-w-6xl mx-auto px-4 sm:px-5 pt-6 pb-32 transition ${blurred ? 'blur-lg select-none pointer-events-none' : ''}`}>
         <BentoCanvas
           cards={boardCards}
           boards={sortedBoards}
@@ -352,6 +487,7 @@ function CanvasShell() {
             setEditingCardId(c.id);
           }}
           onUpdateCard={(c, patch) => void upsertRow('Cards', patch, c)}
+          onMoveCardToBoard={(c, targetId) => void handleMoveCardToBoard(c, targetId)}
           onDuplicateCard={(c) => void handleDuplicateCard(c)}
           onDeleteCard={(c) => setConfirmDeleteCard(c)}
           onCommitLayouts={saveLayoutsDebounced}
@@ -371,7 +507,9 @@ function CanvasShell() {
         <CardModal
           card={editingCard}
           boards={sortedBoards}
+          onSaveExisting={handleSaveExistingCard}
           onRequestDelete={(c) => setConfirmDeleteCard(c)}
+          onOpenLightbox={setLightboxSrc}
           onClose={() => setEditingCardId(null)}
         />
       )}
@@ -381,7 +519,35 @@ function CanvasShell() {
           draft={creatingDraft}
           boards={sortedBoards}
           onCreate={handleCreateFromModal}
+          onOpenLightbox={setLightboxSrc}
           onClose={() => setCreatingDraft(null)}
+        />
+      )}
+
+      {boardModal && (
+        <BoardModal
+          board={boardModal === 'new' ? undefined : boardModal}
+          allBoards={sortedBoards}
+          cardCount={modalBoardCardCount}
+          onSave={handleSaveBoard}
+          onDelete={
+            boardModal === 'new'
+              ? undefined
+              : (moveTo) => handleDeleteBoard(boardModal, moveTo)
+          }
+          onClose={() => setBoardModal(null)}
+        />
+      )}
+
+      {searchOpen && (
+        <SearchModal
+          boards={sortedBoards}
+          cards={cards}
+          onSelect={(c) => {
+            setActiveBoardId(c.board_id || 'main');
+            setEditingCardId(c.id);
+          }}
+          onClose={() => setSearchOpen(false)}
         />
       )}
 
@@ -429,7 +595,7 @@ function CanvasShell() {
       {lightboxSrc && (
         <div
           onClick={() => setLightboxSrc(null)}
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-6 cursor-zoom-out"
+          className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-xs flex items-center justify-center p-6 cursor-zoom-out"
         >
           <img src={lightboxSrc} alt="" className="max-w-full max-h-[88vh] rounded-2xl shadow-2xl" />
         </div>
@@ -438,7 +604,7 @@ function CanvasShell() {
       {toast && (
         <div
           onClick={clearToast}
-          className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-3.5 py-1.5 rounded-full bg-[var(--foreground)] text-[var(--background)] text-xs font-medium shadow-lg cursor-pointer max-w-[90vw] text-center"
+          className="fixed top-16 left-1/2 -translate-x-1/2 z-[75] px-3.5 py-1.5 rounded-full bg-[var(--foreground)] text-[var(--background)] text-xs font-medium shadow-lg cursor-pointer max-w-[90vw] text-center"
         >
           {toast}
         </div>

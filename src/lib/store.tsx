@@ -50,6 +50,9 @@ interface StoreValue {
   refresh: (force?: boolean) => Promise<void>;
   upsertRow: (table: TableName, patch: Record<string, string>, existing?: Row) => Promise<string>;
   deleteRow: (table: TableName, row: Row) => Promise<void>;
+  mutateBatch: (
+    items: { table: TableName; op: 'upsert' | 'delete'; row?: Row; rowId?: string; patch?: Record<string, string> }[],
+  ) => Promise<void>;
   saveLayoutsDebounced: (updates: { row: Row; layout: CardLayout }[]) => void;
   uploadImage: (file: File) => Promise<{ image: CardImage; sizeKb: number }>;
 }
@@ -306,11 +309,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (authState === 'authed') void flushOutbox();
     };
     const onOffline = () => setSyncState('offline');
+    const onVisChange = () => {
+      if (document.visibilityState === 'hidden' && layoutDebounceRef.current) {
+        window.clearTimeout(layoutDebounceRef.current);
+        layoutDebounceRef.current = null;
+        if (authState === 'authed') void flushOutbox();
+      }
+    };
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
+    document.addEventListener('visibilitychange', onVisChange);
     return () => {
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
+      document.removeEventListener('visibilitychange', onVisChange);
     };
   }, [authState, flushOutbox]);
 
@@ -341,7 +353,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const enqueueMany = useCallback(
     async (mutations: Mutation[], flushNow = true) => {
-      // Collapse duplicate pending layout-only patches for the same row_id so rapid drags stay compact
       const next = outboxRef.current.slice();
       for (const m of mutations) {
         const existingIdx = next.findIndex(
@@ -400,6 +411,27 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           client_ts: Date.now(),
         },
       ]);
+    },
+    [device, enqueueMany],
+  );
+
+  const mutateBatch = useCallback(
+    async (
+      items: { table: TableName; op: 'upsert' | 'delete'; row?: Row; rowId?: string; patch?: Record<string, string> }[],
+    ) => {
+      if (!items.length) return;
+      const now = Date.now();
+      const mutations: Mutation[] = items.map((item) => ({
+        mutation_id: ulid(),
+        table: item.table,
+        row_id: item.row?.id || item.rowId || ulid(),
+        op: item.op,
+        base_version: item.row?.version || '0',
+        patch: item.op === 'delete' ? { deleted: 'TRUE' } : item.patch || {},
+        device,
+        client_ts: now,
+      }));
+      await enqueueMany(mutations, true);
     },
     [device, enqueueMany],
   );
@@ -466,6 +498,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       refresh,
       upsertRow,
       deleteRow,
+      mutateBatch,
       saveLayoutsDebounced,
       uploadImage,
     }),
@@ -485,6 +518,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       refresh,
       upsertRow,
       deleteRow,
+      mutateBatch,
       saveLayoutsDebounced,
       uploadImage,
     ],
