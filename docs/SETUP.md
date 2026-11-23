@@ -22,7 +22,7 @@ npm run preview
 2. 菜单栏点 **扩展程序 → Apps Script**。
 3. 把仓库里 `gas/Code.gs` 的全部内容粘贴到编辑器里，保存（Ctrl+S）。
 4. 顶部函数下拉选择 **`setupSheets`**，点 **运行**（首次会提示授权，点“高级 → 转至未命名项目”允许即可）。
-   - 运行完回到表格，应该能看到 `Projects`、`Tasks`、`_Meta`、`_Log` 四个工作表，表头已加粗并冻结。
+   - 运行完回到表格，应该能看到 `Boards`、`Cards`、`_Log` 工作表，且 Google Drive 里会自动建好 `/LifeOS/Uploads/` 图片上传目录。
 5. 生成一个随机密钥（例如在终端运行 `openssl rand -hex 32`），记下来，后面 Cloudflare 也要填同一个值。
 6. 在 Apps Script 左侧点 **项目设置（齿轮）→ 脚本属性 → 添加脚本属性**：
    - 属性：`HMAC_SECRET`
