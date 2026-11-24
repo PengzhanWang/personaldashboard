@@ -105,12 +105,20 @@ export interface CardLink {
   url: string;
 }
 
-export const CARD_FINISHES: { id: CardFinish; label: string; dot: string; border: string }[] = [
-  { id: 'default', label: '纯白', dot: '#ffffff', border: '#d4d4d8' },
-  { id: 'warm', label: '暖纸', dot: '#f5ead6', border: '#e5cfab' },
-  { id: 'sage', label: '鼠尾草', dot: '#e1f0e8', border: '#badbcc' },
-  { id: 'mist', label: '雾蓝', dot: '#e1eff8', border: '#bad9ec' },
-  { id: 'ink', label: '炭黑', dot: '#18181b', border: '#18181b' },
+export type BauhausShape = 'circle' | 'arch' | 'tri' | 'square' | 'diamond';
+
+export const CARD_FINISHES: {
+  id: CardFinish;
+  label: string;
+  dot: string;
+  border: string;
+  shape: BauhausShape;
+}[] = [
+  { id: 'default', label: '包豪斯蓝', dot: '#283D92', border: '#161616', shape: 'circle' },
+  { id: 'warm', label: '陶粉', dot: '#DFB0AF', border: '#161616', shape: 'arch' },
+  { id: 'sage', label: '信号绿', dot: '#02CA0E', border: '#161616', shape: 'tri' },
+  { id: 'mist', label: '梅子紫', dot: '#6C4D6D', border: '#161616', shape: 'square' },
+  { id: 'ink', label: '建筑黑', dot: '#161616', border: '#161616', shape: 'diamond' },
 ];
 
 export function parseCardLayout(raw?: string): CardLayout {

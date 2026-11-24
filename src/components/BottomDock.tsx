@@ -28,24 +28,21 @@ export function BottomDock({
     setLinkOpen(false);
   }
 
-  const itemCls =
-    'px-4 sm:px-5 py-2.5 rounded-full text-[13px] sm:text-sm font-medium text-[var(--foreground)]/85 hover:text-[var(--foreground)] hover:bg-zinc-100 active:scale-95 flex items-center gap-2 transition cursor-pointer';
-
   return (
-    <div className="fixed bottom-6 inset-x-0 z-40 pointer-events-none flex flex-col items-center gap-3 px-4">
+    <div className="fixed bottom-5 inset-x-0 z-40 pointer-events-none flex flex-col items-center gap-2.5 px-4">
       {linkOpen && (
         <form
           onSubmit={submitLink}
-          className="pointer-events-auto floating-dock rounded-full p-2 pl-5 flex items-center gap-2.5 w-full max-w-lg"
+          className="pointer-events-auto bauhaus-dock p-2 pl-4 flex items-center gap-2.5 w-full max-w-lg"
         >
           <input
             type="text"
             value={linkTitle}
             onChange={(e) => setLinkTitle(e.target.value)}
             placeholder="名称"
-            className="w-24 sm:w-32 bg-transparent text-sm font-medium focus:outline-none placeholder:text-[var(--muted-foreground)]"
+            className="w-24 sm:w-32 bg-transparent text-xs font-bold focus:outline-none placeholder:text-[var(--muted-foreground)]"
           />
-          <span className="w-px h-5 bg-[var(--border)]" />
+          <span className="w-[1.5px] h-5 bg-[#161616]" />
           <input
             type="text"
             required
@@ -53,18 +50,18 @@ export function BottomDock({
             value={linkUrl}
             onChange={(e) => setLinkUrl(e.target.value)}
             placeholder="粘贴 Google Sheet / Doc 或任意链接…"
-            className="flex-1 bg-transparent text-sm focus:outline-none placeholder:text-[var(--muted-foreground)] min-w-0"
+            className="flex-1 bg-transparent text-xs font-mono focus:outline-none placeholder:text-[var(--muted-foreground)] min-w-0"
           />
           <button
             type="submit"
-            className="px-4 py-2 rounded-full bg-[var(--foreground)] text-[var(--background)] text-xs font-medium cursor-pointer shrink-0"
+            className="bauhaus-btn px-3.5 py-1.5 bg-[#161616] text-white text-xs font-mono font-bold cursor-pointer shrink-0"
           >
-            添加
+            ADD
           </button>
           <button
             type="button"
             onClick={() => setLinkOpen(false)}
-            className="p-2 rounded-full text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer"
+            className="p-1.5 text-[var(--muted-foreground)] hover:text-[#161616] cursor-pointer"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -74,36 +71,31 @@ export function BottomDock({
         </form>
       )}
 
-      <div className="pointer-events-auto floating-dock rounded-full px-2.5 py-2 flex items-center gap-1">
-        <span className="hidden sm:inline-flex items-center pl-3.5 pr-2 text-xs font-medium text-[var(--muted-foreground)] select-none">
-          新增模块
+      <div className="pointer-events-auto bauhaus-dock p-2 flex items-center gap-2 text-xs font-bold">
+        <span className="hidden sm:inline-flex items-center px-2 font-mono text-[11px] uppercase tracking-wider text-[var(--muted-foreground)] select-none">
+          NEW +
         </span>
-        <span className="hidden sm:block w-px h-5 bg-[var(--border)] mr-1" />
 
-        <button type="button" onClick={onAddChecklist} className={itemCls}>
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="9 11 12 14 22 4" />
-            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-          </svg>
+        <button
+          type="button"
+          onClick={onAddChecklist}
+          className="bauhaus-btn px-4 py-2 bg-[#283D92] text-white flex items-center gap-2 cursor-pointer"
+        >
+          <span className="w-2.5 h-2.5 rounded-full bg-white inline-block" />
           <span>清单</span>
         </button>
 
-        <button type="button" onClick={onAddNote} className={itemCls}>
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-            <line x1="16" y1="13" x2="8" y2="13" />
-            <line x1="16" y1="17" x2="8" y2="17" />
-          </svg>
+        <button
+          type="button"
+          onClick={onAddNote}
+          className="bauhaus-btn px-4 py-2 bg-[#DFB0AF] text-[#161616] flex items-center gap-2 cursor-pointer"
+        >
+          <span className="w-2.5 h-2.5 rounded-t-full bg-[#161616] inline-block" />
           <span>笔记</span>
         </button>
 
-        <label className={itemCls}>
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-            <circle cx="8.5" cy="8.5" r="1.5" />
-            <polyline points="21 15 16 10 5 21" />
-          </svg>
+        <label className="bauhaus-btn px-4 py-2 bg-[#6C4D6D] text-white flex items-center gap-2 cursor-pointer">
+          <span className="w-2.5 h-2.5 bg-white inline-block" />
           <span>{uploading ? '上传中…' : '图片'}</span>
           <input
             type="file"
@@ -121,16 +113,11 @@ export function BottomDock({
         <button
           type="button"
           onClick={() => setLinkOpen((v) => !v)}
-          className={
-            linkOpen
-              ? 'px-4 sm:px-5 py-2.5 rounded-full bg-[var(--foreground)] text-[var(--background)] text-[13px] sm:text-sm font-medium flex items-center gap-2 transition cursor-pointer'
-              : itemCls
-          }
+          className={`bauhaus-btn px-4 py-2 flex items-center gap-2 cursor-pointer ${
+            linkOpen ? 'bg-[#02CA0E] text-[#161616]' : 'bg-white text-[#161616] hover:bg-[#02CA0E] hover:text-[#161616]'
+          }`}
         >
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-          </svg>
+          <span className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[9px] border-b-[#161616] inline-block" />
           <span>关联文档</span>
         </button>
       </div>

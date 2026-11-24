@@ -14,8 +14,8 @@ export default defineConfig({
         name: 'LifeOS Dashboard',
         short_name: 'LifeOS',
         description: '个人生活与项目管理看板',
-        theme_color: '#0f172a',
-        background_color: '#f8fafc',
+        theme_color: '#F4F1EA',
+        background_color: '#F4F1EA',
         display: 'standalone',
         start_url: '/',
         icons: [

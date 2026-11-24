@@ -11,21 +11,21 @@ import { ulid } from './lib/ulid';
 
 function formatDateLabel(): string {
   const d = new Date();
-  return `${d.getMonth() + 1}月${d.getDate()}日`;
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function formatSyncLabel(syncState: string, pendingCount: number, lastSyncedAt: number | null): string {
-  if (syncState === 'error' && pendingCount > 0) return `${pendingCount} 同步失败`;
-  if (pendingCount > 0) return `${pendingCount} 待同步`;
-  if (syncState === 'syncing') return '同步中';
-  if (syncState === 'offline') return '离线';
-  if (syncState === 'error') return '同步失败';
-  if (!lastSyncedAt) return '就绪';
+  if (syncState === 'error' && pendingCount > 0) return `${pendingCount} ERR`;
+  if (pendingCount > 0) return `${pendingCount} PENDING`;
+  if (syncState === 'syncing') return 'SYNCING';
+  if (syncState === 'offline') return 'OFFLINE';
+  if (syncState === 'error') return 'ERROR';
+  if (!lastSyncedAt) return 'READY';
   const sec = Math.max(0, Math.floor((Date.now() - lastSyncedAt) / 1000));
-  if (sec < 15) return '已同步';
-  if (sec < 60) return `${sec}s 前`;
+  if (sec < 15) return 'SYNCED';
+  if (sec < 60) return `${sec}S`;
   const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m 前`;
+  if (min < 60) return `${min}M`;
   return new Date(lastSyncedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 }
 
@@ -63,7 +63,6 @@ function CanvasShell() {
   const [dockUploading, setDockUploading] = useState(false);
   const [, setClockTick] = useState(0);
 
-  // Refresh relative sync label ("2m 前") every 30s
   useEffect(() => {
     const id = window.setInterval(() => setClockTick((n) => n + 1), 30000);
     return () => window.clearInterval(id);
@@ -82,7 +81,6 @@ function CanvasShell() {
     }
   }, [sortedBoards, activeBoardId]);
 
-  // Global keyboard shortcuts: Alt+B privacy blur, Ctrl/Cmd+K quick search, Esc close overlays
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.altKey && e.key.toLowerCase() === 'b') {
@@ -112,8 +110,8 @@ function CanvasShell() {
 
   if (authState === 'checking') {
     return (
-      <div className="min-h-screen canvas-dots flex items-center justify-center text-xs text-[var(--muted-foreground)]">
-        正在加载 LifeOS…
+      <div className="min-h-screen canvas-bauhaus flex items-center justify-center font-mono text-xs text-[var(--muted-foreground)]">
+        LOADING LIFEOS…
       </div>
     );
   }
@@ -227,7 +225,6 @@ function CanvasShell() {
     const nextPatch = { ...patch };
     const prevBoard = card.board_id || 'main';
     const nextBoard = patch.board_id || prevBoard;
-    // If moved to a different board, place at a clean free y-slot so it never overlaps
     if (nextBoard !== prevBoard) {
       const curLayout = parseCardLayout(card.layout_json);
       nextPatch.layout_json = JSON.stringify({ ...curLayout, x: 0, y: nextFreeY(nextBoard, card.id) });
@@ -274,9 +271,9 @@ function CanvasShell() {
       const title = file.name.replace(/\.[^.]+$/, '') || '图片';
       await upsertRow('Cards', {
         board_id: bId,
-        tag: '图片',
+        tag: 'IMAGE',
         title,
-        finish: 'default',
+        finish: 'mist',
         layout_json: JSON.stringify({ x: 0, y: nextFreeY(bId), w: 4, h: 3 }),
         content_md: '',
         images_json: JSON.stringify([image]),
@@ -295,13 +292,13 @@ function CanvasShell() {
     const bId = await ensureBoardExists();
     const kind = detectLinkKind(url);
     const tag =
-      kind === 'gsheet' ? 'Google Sheets' : kind === 'gdoc' ? 'Google Docs' : kind === 'gdrive' ? 'Google Drive' : '链接';
+      kind === 'gsheet' ? 'GSHEET' : kind === 'gdoc' ? 'GDOC' : kind === 'gdrive' ? 'GDRIVE' : 'LINK';
     const label = title || (kind === 'gsheet' ? '表格' : kind === 'gdoc' ? '文档' : '快捷链接');
     await upsertRow('Cards', {
       board_id: bId,
       tag,
       title: label,
-      finish: 'default',
+      finish: 'sage',
       layout_json: JSON.stringify({ x: 0, y: nextFreeY(bId), w: 3, h: 2 }),
       content_md: '',
       images_json: '[]',
@@ -313,12 +310,12 @@ function CanvasShell() {
 
   const syncDot =
     syncState === 'error'
-      ? 'bg-rose-500'
+      ? 'bg-rose-600'
       : pendingCount > 0 || syncState === 'offline'
-        ? 'bg-amber-400'
+        ? 'bg-amber-500'
         : syncState === 'syncing'
-          ? 'bg-sky-500 animate-pulse'
-          : 'bg-emerald-500';
+          ? 'bg-[#283D92] animate-pulse'
+          : 'bg-[#02CA0E]';
 
   const modalBoardCardCount =
     boardModal && boardModal !== 'new'
@@ -326,21 +323,24 @@ function CanvasShell() {
       : 0;
 
   return (
-    <div className="min-h-screen canvas-dots">
-      {/* Minimal Editorial Header */}
-      <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--background)]/80 backdrop-blur-xl">
+    <div className="min-h-screen canvas-bauhaus">
+      {/* Bauhaus Architectural Header */}
+      <header className="sticky top-0 z-30 border-b-[1.5px] border-[#161616] bg-[#F4F1EA]">
         <div className="max-w-6xl mx-auto px-4 sm:px-5 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-4 min-w-0">
             <div className="flex items-center gap-2 shrink-0">
-              <div className="w-6 h-6 rounded-lg bg-[var(--foreground)] text-[var(--background)] flex items-center justify-center text-xs font-semibold">
-                L
+              {/* Bauhaus Trio Mark */}
+              <div className="flex items-center">
+                <span className="w-4 h-4 rounded-full bg-[#283D92] inline-block" />
+                <span className="w-4 h-4 bg-[#6C4D6D] inline-block -ml-1" />
+                <span className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[15px] border-b-[#02CA0E] inline-block -ml-1" />
               </div>
-              <span className="font-semibold text-sm tracking-tight">LifeOS</span>
-              <span className="hidden md:inline text-xs text-[var(--muted-foreground)]">/ {formatDateLabel()}</span>
+              <span className="font-bold text-sm tracking-widest uppercase">LIFEOS</span>
+              <span className="hidden lg:inline font-mono text-[11px] text-[var(--muted-foreground)]">/ {formatDateLabel()}</span>
             </div>
 
-            {/* Board Tabs (click to switch, right-click or gear icon on active tab to rename/delete) */}
-            <nav className="flex items-center gap-1 overflow-x-auto">
+            {/* Sharp Board Tabs */}
+            <nav className="flex items-center gap-1.5 overflow-x-auto">
               {sortedBoards.map((b) => {
                 const isActive = activeBoardId === b.id;
                 return (
@@ -350,17 +350,15 @@ function CanvasShell() {
                       e.preventDefault();
                       setBoardModal(b);
                     }}
-                    className={`inline-flex items-center rounded-full text-xs font-medium transition shrink-0 ${
-                      isActive
-                        ? 'bg-[var(--foreground)] text-[var(--background)]'
-                        : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)]'
+                    className={`inline-flex items-center border-[1.5px] border-[#161616] font-mono text-xs font-bold transition shrink-0 ${
+                      isActive ? 'bg-[#161616] text-white' : 'bg-white text-[#161616] hover:bg-[#DFB0AF]'
                     }`}
                   >
                     <button
                       type="button"
                       onClick={() => setActiveBoardId(b.id)}
-                      title="右键或点击右侧图标管理画布"
-                      className={`py-1 cursor-pointer ${isActive ? 'pl-3 pr-1.5' : 'px-3'}`}
+                      title="右键或点击右侧齿轮管理画布"
+                      className={`py-1 cursor-pointer ${isActive ? 'pl-2.5 pr-1.5' : 'px-2.5'}`}
                     >
                       {b.title}
                     </button>
@@ -369,7 +367,7 @@ function CanvasShell() {
                         type="button"
                         onClick={() => setBoardModal(b)}
                         title="画布设置（重命名 / 敏感 / 删除）"
-                        className="pr-2.5 pl-0.5 py-1 opacity-65 hover:opacity-100 cursor-pointer"
+                        className="pr-2 pl-0.5 py-1 opacity-75 hover:opacity-100 cursor-pointer"
                       >
                         <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <circle cx="12" cy="12" r="3" />
@@ -384,49 +382,48 @@ function CanvasShell() {
                 type="button"
                 onClick={() => setBoardModal('new')}
                 title="新建画布"
-                className="w-6 h-6 rounded-full border border-dashed border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] flex items-center justify-center text-xs cursor-pointer shrink-0"
+                className="w-7 h-7 border-[1.5px] border-dashed border-[#161616] bg-white hover:bg-[#161616] hover:text-white font-mono text-xs font-bold flex items-center justify-center cursor-pointer shrink-0 transition"
               >
                 +
               </button>
             </nav>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 text-xs">
+          <div className="flex items-center gap-1.5 shrink-0 font-mono text-[11px]">
             {device === 'work' && (
-              <span className="px-2.5 py-1 rounded-full border border-[var(--foreground)] text-[11px] font-medium">
-                公司模式
+              <span className="px-2 py-1 border-[1.5px] border-[#161616] bg-[#DFB0AF] font-bold">
+                WORK
               </span>
             )}
             {backendKind === 'mock' && (
-              <span className="hidden sm:inline px-2 py-0.5 rounded-full border border-[var(--border)] text-[11px] text-[var(--muted-foreground)]">
-                Mock
+              <span className="hidden sm:inline px-2 py-1 border border-[#161616]/40 text-[var(--muted-foreground)]">
+                MOCK
               </span>
             )}
 
-            {/* Global Search */}
             <button
               type="button"
               onClick={() => setSearchOpen(true)}
               title="搜索所有模块 (Ctrl+K)"
-              className="p-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition cursor-pointer"
+              className="bauhaus-btn bg-white p-1.5 cursor-pointer"
             >
-              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
                 <circle cx="11" cy="11" r="8" />
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
             </button>
 
-            <div className="hidden md:inline-flex items-center p-0.5 rounded-full border border-[var(--border)] bg-[var(--card)]">
+            <div className="hidden md:inline-flex items-center border-[1.5px] border-[#161616] bg-white">
               <button
                 type="button"
                 onClick={() => setViewMode('desktop')}
                 title="12 列桌面拼图"
-                className={`p-1.5 rounded-full transition cursor-pointer ${
-                  viewMode === 'desktop' ? 'bg-[var(--foreground)] text-[var(--background)]' : 'text-[var(--muted-foreground)]'
+                className={`p-1.5 cursor-pointer ${
+                  viewMode === 'desktop' ? 'bg-[#161616] text-white' : 'text-[#161616]'
                 }`}
               >
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <rect x="2" y="3" width="20" height="14" rx="2" />
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
+                  <rect x="2" y="3" width="20" height="14" rx="1" />
                   <line x1="8" y1="21" x2="16" y2="21" />
                   <line x1="12" y1="17" x2="12" y2="21" />
                 </svg>
@@ -435,12 +432,12 @@ function CanvasShell() {
                 type="button"
                 onClick={() => setViewMode('mobile')}
                 title="2 列手机预览"
-                className={`p-1.5 rounded-full transition cursor-pointer ${
-                  viewMode === 'mobile' ? 'bg-[var(--foreground)] text-[var(--background)]' : 'text-[var(--muted-foreground)]'
+                className={`p-1.5 cursor-pointer border-l-[1.5px] border-[#161616] ${
+                  viewMode === 'mobile' ? 'bg-[#161616] text-white' : 'text-[#161616]'
                 }`}
               >
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <rect x="5" y="2" width="14" height="20" rx="2" />
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
+                  <rect x="5" y="2" width="14" height="20" rx="1" />
                   <line x1="12" y1="18" x2="12.01" y2="18" />
                 </svg>
               </button>
@@ -450,9 +447,9 @@ function CanvasShell() {
               type="button"
               onClick={() => void refresh(true)}
               title="双向同步：推送本地改动到 Google Sheets，并拉取表格最新数据"
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition cursor-pointer"
+              className="bauhaus-btn bg-[#DFB0AF] px-2.5 py-1 font-bold flex items-center gap-1.5 cursor-pointer"
             >
-              <span className={`w-1.5 h-1.5 rounded-full ${syncDot}`} />
+              <span className={`w-2 h-2 border border-[#161616] ${syncDot}`} />
               <span className="hidden sm:inline">{formatSyncLabel(syncState, pendingCount, lastSyncedAt)}</span>
             </button>
 
@@ -460,7 +457,7 @@ function CanvasShell() {
               type="button"
               onClick={() => setBlurred((v) => !v)}
               title="一键遮挡 (Alt+B)"
-              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition cursor-pointer"
+              className="bauhaus-btn bg-white px-2.5 py-1 font-bold cursor-pointer"
             >
               {blurred ? '恢复' : '遮挡'}
             </button>
@@ -468,7 +465,7 @@ function CanvasShell() {
             <button
               type="button"
               onClick={() => void logout()}
-              className="px-2 py-1.5 text-[var(--muted-foreground)] hover:text-rose-600 transition cursor-pointer"
+              className="px-2 py-1 text-[var(--muted-foreground)] hover:text-rose-600 font-bold cursor-pointer"
             >
               退出
             </button>
@@ -476,7 +473,7 @@ function CanvasShell() {
         </div>
       </header>
 
-      {/* Main Bento Canvas */}
+      {/* Main Bauhaus Canvas */}
       <main className={`max-w-6xl mx-auto px-4 sm:px-5 pt-6 pb-32 transition ${blurred ? 'blur-lg select-none pointer-events-none' : ''}`}>
         <BentoCanvas
           cards={boardCards}
@@ -497,8 +494,8 @@ function CanvasShell() {
 
       <BottomDock
         uploading={dockUploading}
-        onAddChecklist={() => openNewDraft('清单', 'default', '- [ ] ')}
-        onAddNote={() => openNewDraft('笔记', 'warm', '')}
+        onAddChecklist={() => openNewDraft('LIST', 'default', '- [ ] ')}
+        onAddNote={() => openNewDraft('NOTE', 'warm', '')}
         onUploadImageCard={(f) => void handleUploadImageCard(f)}
         onAddLinkCard={(t, u) => void handleAddLinkCard(t, u)}
       />
@@ -554,23 +551,23 @@ function CanvasShell() {
       {confirmDeleteCard && (
         <div
           onClick={() => setConfirmDeleteCard(null)}
-          className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-xs bg-[var(--card)] border border-[var(--border)] rounded-[24px] shadow-2xl p-6 space-y-4"
+            className="w-full max-w-xs bg-[#F4F1EA] border-2 border-[#161616] shadow-[8px_8px_0_#161616] p-6 space-y-4"
           >
             <div className="space-y-1.5">
-              <h3 className="text-sm font-semibold tracking-tight">确认删除这个模块？</h3>
+              <h3 className="text-sm font-bold">确认删除这个模块？</h3>
               <p className="text-xs text-[var(--muted-foreground)] leading-relaxed">
-                将删除「<span className="text-[var(--foreground)] font-medium">{confirmDeleteCard.title || '未命名模块'}</span>」，删除后可在 Google 表格的 <code className="font-mono">Cards</code> 表中将 <code className="font-mono">deleted</code> 改回 <code className="font-mono">FALSE</code> 找回。
+                将删除「<span className="text-[#161616] font-bold">{confirmDeleteCard.title || '未命名模块'}</span>」，删除后可在 Google 表格的 <code className="font-mono">Cards</code> 表中将 <code className="font-mono">deleted</code> 改回 <code className="font-mono">FALSE</code> 找回。
               </p>
             </div>
             <div className="flex items-center justify-end gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => setConfirmDeleteCard(null)}
-                className="px-3.5 py-1.5 rounded-full border border-[var(--border)] text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer"
+                className="bauhaus-btn bg-white px-3.5 py-1.5 font-mono text-xs cursor-pointer"
               >
                 取消
               </button>
@@ -583,7 +580,7 @@ function CanvasShell() {
                   void deleteRow('Cards', target);
                   showToast('模块已删除');
                 }}
-                className="px-4 py-1.5 rounded-full bg-rose-600 text-white text-xs font-medium hover:bg-rose-700 cursor-pointer"
+                className="bauhaus-btn bg-rose-600 text-white px-4 py-1.5 font-mono text-xs font-bold cursor-pointer"
               >
                 确认删除
               </button>
@@ -595,16 +592,16 @@ function CanvasShell() {
       {lightboxSrc && (
         <div
           onClick={() => setLightboxSrc(null)}
-          className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-xs flex items-center justify-center p-6 cursor-zoom-out"
+          className="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center p-6 cursor-zoom-out"
         >
-          <img src={lightboxSrc} alt="" className="max-w-full max-h-[88vh] rounded-2xl shadow-2xl" />
+          <img src={lightboxSrc} alt="" className="max-w-full max-h-[88vh] border-2 border-white shadow-[10px_10px_0_#283D92]" />
         </div>
       )}
 
       {toast && (
         <div
           onClick={clearToast}
-          className="fixed top-16 left-1/2 -translate-x-1/2 z-[75] px-3.5 py-1.5 rounded-full bg-[var(--foreground)] text-[var(--background)] text-xs font-medium shadow-lg cursor-pointer max-w-[90vw] text-center"
+          className="fixed top-16 left-1/2 -translate-x-1/2 z-[75] px-4 py-1.5 bg-[#161616] text-white border border-[#161616] shadow-[4px_4px_0_#283D92] font-mono text-xs font-bold cursor-pointer max-w-[90vw] text-center"
         >
           {toast}
         </div>

@@ -4,13 +4,14 @@ import {
   parseCardImages,
   parseCardLayout,
   parseCardLinks,
+  type BauhausShape,
   type CardFinish,
   type CardLayout,
   type LinkKind,
   type Row,
 } from '../../shared/schema';
 
-const GAP = 16;
+const GAP = 14;
 const ROW_H = 92;
 const COLS_DESKTOP = 12;
 
@@ -95,10 +96,32 @@ function computeMobileRects(entries: LayoutEntry[]): Map<string, CardLayout> {
 }
 
 function linkDotColor(kind: LinkKind): string {
-  if (kind === 'gsheet') return '#16a34a';
-  if (kind === 'gdoc') return '#2563eb';
-  if (kind === 'gdrive') return '#d97706';
-  return '#71717a';
+  if (kind === 'gsheet') return '#02CA0E';
+  if (kind === 'gdoc') return '#283D92';
+  if (kind === 'gdrive') return '#DFB0AF';
+  return '#6C4D6D';
+}
+
+function MotifGlyph({ shape, color, inverted }: { shape: BauhausShape; color: string; inverted?: boolean }) {
+  const fill = inverted ? '#F4F1EA' : color;
+  if (shape === 'circle') {
+    return <span className="w-3.5 h-3.5 rounded-full inline-block shrink-0" style={{ background: fill }} />;
+  }
+  if (shape === 'arch') {
+    return <span className="w-3.5 h-3.5 rounded-t-full inline-block shrink-0" style={{ background: fill }} />;
+  }
+  if (shape === 'tri') {
+    return (
+      <span
+        className="w-0 h-0 border-l-[7px] border-l-transparent border-r-[7px] border-r-transparent border-b-[13px] inline-block shrink-0"
+        style={{ borderBottomColor: fill }}
+      />
+    );
+  }
+  if (shape === 'diamond') {
+    return <span className="w-3 h-3 rotate-45 inline-block shrink-0" style={{ background: fill }} />;
+  }
+  return <span className="w-3.5 h-3.5 inline-block shrink-0" style={{ background: fill }} />;
 }
 
 const SIZE_PRESETS: [string, number, number][] = [
@@ -155,7 +178,6 @@ export function BentoCanvas({
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // Dismiss right-click context menu on outside click, scroll, or Esc
   useEffect(() => {
     if (!contextMenu) return;
     const close = () => setContextMenu(null);
@@ -383,7 +405,6 @@ export function BentoCanvas({
     onUpdateCard(card, { content_md: lines.join('\n') });
   }
 
-  /** Commit typed inline checklist text on Enter OR onBlur so it is never lost when clicking into the card. */
   function commitQuickInput(card: Row) {
     const val = (quickInputs[card.id] || '').trim();
     if (!val) return;
@@ -395,8 +416,8 @@ export function BentoCanvas({
   function openContextMenu(e: React.MouseEvent, card: Row) {
     e.preventDefault();
     e.stopPropagation();
-    const menuW = 216;
-    const menuH = 310;
+    const menuW = 224;
+    const menuH = 320;
     const x = Math.min(e.clientX, window.innerWidth - menuW - 12);
     const y = Math.min(e.clientY, window.innerHeight - menuH - 12);
     setContextMenu({ card, x: Math.max(12, x), y: Math.max(12, y) });
@@ -405,8 +426,14 @@ export function BentoCanvas({
   if (entries.length === 0) {
     return (
       <div className="min-h-[420px] flex flex-col items-center justify-center text-center px-6 select-none">
-        <p className="text-sm font-medium text-[var(--foreground)]/80">这块画布还是空的</p>
-        <p className="text-xs text-[var(--muted-foreground)] mt-1.5">从下方悬浮栏选择清单、笔记、图片或关联文档开始记录</p>
+        <div className="flex items-center gap-2 mb-3">
+          <span className="w-4 h-4 rounded-full bg-[#283D92]" />
+          <span className="w-4 h-4 bg-[#6C4D6D]" />
+          <span className="w-4 h-4 rounded-t-full bg-[#DFB0AF]" />
+          <span className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[14px] border-b-[#02CA0E]" />
+        </div>
+        <p className="text-sm font-bold tracking-wide">这块画布还是空的</p>
+        <p className="text-xs font-mono text-[var(--muted-foreground)] mt-1.5">从下方工具栏选择清单、笔记、图片或关联文档开始记录</p>
       </div>
     );
   }
@@ -428,6 +455,8 @@ export function BentoCanvas({
             const links = parseCardLinks(card.links_json);
             const lines = (card.content_md || '').split('\n');
             const quickVal = quickInputs[card.id] || '';
+            const motif = CARD_FINISHES.find((f) => f.id === (card.finish || 'default')) || CARD_FINISHES[0];
+            const isInk = motif.id === 'ink';
 
             let checkTotal = 0;
             let checkDone = 0;
@@ -472,28 +501,34 @@ export function BentoCanvas({
                 }}
                 className="bento-item"
               >
-                <div className={`bento-card-inner finish-${card.finish || 'default'}`}>
+                <div className={`bento-card-inner ${isInk ? 'finish-ink' : ''}`}>
+                  {/* Bauhaus 8px Top Motif Bar */}
+                  <div className="h-2 w-full shrink-0" style={{ background: isInk ? '#DFB0AF' : motif.dot }} />
+
                   {/* Card Header */}
-                  <div className="px-5 pt-4 pb-2 flex items-start justify-between gap-2 no-select">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        {card.tag && (
-                          <span className="text-[11px] uppercase tracking-wider muted-text text-[var(--muted-foreground)] font-medium">
-                            {card.tag}
-                          </span>
-                        )}
-                        {checkTotal > 0 && (
-                          <span className="text-[11px] font-mono muted-text text-[var(--muted-foreground)]">
-                            {checkDone}/{checkTotal}
-                          </span>
-                        )}
-                        {card.sensitive === 'TRUE' && (
-                          <span className="text-[10px] px-1.5 py-0.2 rounded-full border border-[var(--border)] muted-text text-[var(--muted-foreground)]">
-                            敏感
-                          </span>
-                        )}
+                  <div className="px-4 pt-3 pb-2 flex items-start justify-between gap-2 border-b border-[#161616]/15 card-divider no-select">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <MotifGlyph shape={motif.shape} color={motif.dot} inverted={isInk} />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          {card.tag && (
+                            <span className="font-mono text-[10px] uppercase tracking-widest muted-text text-[var(--muted-foreground)] font-bold">
+                              {card.tag}
+                            </span>
+                          )}
+                          {checkTotal > 0 && (
+                            <span className="font-mono text-[10px] muted-text text-[var(--muted-foreground)]">
+                              {checkDone}/{checkTotal}
+                            </span>
+                          )}
+                          {card.sensitive === 'TRUE' && (
+                            <span className="font-mono text-[9px] px-1 border border-current opacity-75">
+                              敏感
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="font-bold text-sm tracking-tight truncate mt-0.5">{card.title || '未命名模块'}</h3>
                       </div>
-                      <h3 className="font-semibold text-[15px] tracking-tight truncate mt-0.5">{card.title || '未命名模块'}</h3>
                     </div>
 
                     <div data-no-drag="1" className={`flex items-center gap-1 shrink-0 ${isMobile ? '' : 'hover-controls'}`}>
@@ -504,30 +539,27 @@ export function BentoCanvas({
                           onEditCard(card);
                         }}
                         title="编辑模块"
-                        className="p-1.5 rounded-full subtle-pill bg-[var(--background)] border border-[var(--border)] hover:opacity-80 cursor-pointer"
+                        className="px-1.5 py-0.5 font-mono text-[10px] underline cursor-pointer"
                       >
-                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M12 20h9" />
-                          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-                        </svg>
+                        EDIT
                       </button>
                       <button
                         type="button"
                         onClick={(e) => openContextMenu(e, card)}
                         title="更多操作（也可右键卡片）"
-                        className="p-1.5 rounded-full subtle-pill bg-[var(--background)] border border-[var(--border)] hover:opacity-80 cursor-pointer"
+                        className="p-1 border border-current/25 hover:border-current cursor-pointer"
                       >
-                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-                          <circle cx="5" cy="12" r="1.8" />
-                          <circle cx="12" cy="12" r="1.8" />
-                          <circle cx="19" cy="12" r="1.8" />
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                          <circle cx="5" cy="12" r="2" />
+                          <circle cx="12" cy="12" r="2" />
+                          <circle cx="19" cy="12" r="2" />
                         </svg>
                       </button>
                     </div>
                   </div>
 
                   {/* Card Content Surface */}
-                  <div className="px-5 pb-4 flex-1 flex flex-col gap-1 overflow-y-auto card-scroll">
+                  <div className="px-4 py-3 flex-1 flex flex-col gap-1 overflow-y-auto card-scroll">
                     <div className="space-y-0.5">
                       {lines.map((line, idx) => {
                         const unchecked = line.match(/^\s*-\s*\[ \]\s*(.*)$/);
@@ -540,7 +572,7 @@ export function BentoCanvas({
                               className="flex items-start gap-2.5 py-0.5 cursor-pointer"
                             >
                               <span className="check-box" />
-                              <span className="text-xs leading-relaxed break-words">{unchecked[1]}</span>
+                              <span className="text-xs leading-snug break-words">{unchecked[1]}</span>
                             </div>
                           );
                         }
@@ -551,14 +583,14 @@ export function BentoCanvas({
                               key={idx}
                               data-check="1"
                               onClick={(e) => toggleChecklistLine(e, card, idx)}
-                              className="flex items-start gap-2.5 py-0.5 cursor-pointer opacity-50"
+                              className="flex items-start gap-2.5 py-0.5 cursor-pointer opacity-45"
                             >
                               <span className="check-box checked">
                                 <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
                                   <polyline points="20 6 9 17 4 12" />
                                 </svg>
                               </span>
-                              <span className="text-xs leading-relaxed line-through break-words">{checked[1]}</span>
+                              <span className="text-xs leading-snug line-through break-words">{checked[1]}</span>
                             </div>
                           );
                         }
@@ -589,7 +621,7 @@ export function BentoCanvas({
                                   ? { backgroundImage: `url(${im.thumb})`, backgroundSize: 'cover', backgroundPosition: 'center' }
                                   : undefined
                               }
-                              className="relative rounded-2xl overflow-hidden border border-[var(--border)] h-24 cursor-zoom-in group/img bg-zinc-100"
+                              className="relative overflow-hidden border-[1.5px] border-[#161616] h-24 cursor-zoom-in group/img bg-[#F4F1EA]"
                             >
                               <img
                                 src={fullUrl}
@@ -604,7 +636,7 @@ export function BentoCanvas({
                       </div>
                     )}
 
-                    {/* Quick inline checklist add (auto-commits on Enter OR blur) */}
+                    {/* Quick inline checklist add */}
                     <form
                       onSubmit={(e) => {
                         e.preventDefault();
@@ -621,13 +653,13 @@ export function BentoCanvas({
                         onChange={(e) => setQuickInputs((prev) => ({ ...prev, [card.id]: e.target.value }))}
                         onBlur={() => commitQuickInput(card)}
                         placeholder="+ 快速加一条清单（回车确认）…"
-                        className="flex-1 bg-transparent text-xs py-1 focus:outline-none placeholder:opacity-45 border-b border-transparent focus:border-[var(--border)] min-w-0"
+                        className="flex-1 bg-transparent font-mono text-[11px] py-1 focus:outline-none placeholder:opacity-45 border-b border-transparent focus:border-current min-w-0"
                       />
                       {quickVal.trim() && (
                         <button
                           type="submit"
                           onMouseDown={(e) => e.preventDefault()}
-                          className="px-1.5 py-0.5 rounded text-[11px] bg-[var(--foreground)] text-[var(--background)] cursor-pointer shrink-0"
+                          className="px-1.5 py-0.5 bg-[#161616] text-white font-mono text-[10px] cursor-pointer shrink-0"
                         >
                           ↵
                         </button>
@@ -636,7 +668,7 @@ export function BentoCanvas({
 
                     {/* Linked Docs / Sheets Chips */}
                     {links.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 pt-2.5 mt-auto">
+                      <div className="flex flex-wrap gap-1.5 pt-2.5 mt-auto border-t border-[#161616]/15 card-divider">
                         {links.map((l) => (
                           <a
                             key={l.id}
@@ -644,26 +676,23 @@ export function BentoCanvas({
                             target="_blank"
                             rel="noreferrer"
                             data-no-drag="1"
-                            className="subtle-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-[var(--background)] border border-[var(--border)] hover:opacity-75 transition max-w-full"
+                            className="subtle-pill inline-flex items-center gap-1.5 px-2 py-0.5 font-mono text-[11px] border border-[#161616] bg-white hover:bg-[#161616] hover:text-white transition max-w-full"
                           >
-                            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: linkDotColor(l.kind) }} />
-                            <span className="truncate font-medium">{l.title}</span>
-                            <svg className="w-3 h-3 opacity-45 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <line x1="7" y1="17" x2="17" y2="7" />
-                              <polyline points="7 7 17 7 17 17" />
-                            </svg>
+                            <span className="w-1.5 h-1.5 shrink-0" style={{ background: linkDotColor(l.kind) }} />
+                            <span className="truncate font-bold">{l.title}</span>
+                            <span className="opacity-65 shrink-0">↗</span>
                           </a>
                         ))}
                       </div>
                     )}
                   </div>
 
-                  {/* Desktop Hover Size Pill + Corner Resize Grip */}
+                  {/* Desktop Hover Size Bar + Corner Resize Grip */}
                   {!isMobile && (
                     <>
                       <div
                         data-no-drag="1"
-                        className="hover-controls absolute bottom-2.5 left-1/2 -translate-x-1/2 flex items-center gap-0.5 px-1.5 py-1 rounded-full bg-[var(--foreground)] text-[var(--background)] shadow-lg"
+                        className="hover-controls absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center border-[1.5px] border-[#161616] bg-[#F4F1EA] shadow-[3px_3px_0_#161616]"
                       >
                         {SIZE_PRESETS.map(([label, pw, ph]) => (
                           <button
@@ -673,10 +702,10 @@ export function BentoCanvas({
                               e.stopPropagation();
                               applyPresetSize(card, pw, ph);
                             }}
-                            className={`px-2 py-0.5 rounded-full text-[11px] font-medium cursor-pointer transition ${
+                            className={`px-2 py-0.5 font-mono text-[10px] font-bold cursor-pointer transition ${
                               layout.w === pw && layout.h === ph
-                                ? 'bg-[var(--background)] text-[var(--foreground)]'
-                                : 'opacity-70 hover:opacity-100'
+                                ? 'bg-[#161616] text-white'
+                                : 'text-[#161616] hover:bg-white'
                             }`}
                           >
                             {label}
@@ -687,11 +716,9 @@ export function BentoCanvas({
                       <div
                         data-resize="1"
                         title="拖拽缩放尺寸"
-                        className="hover-controls no-select absolute right-1.5 bottom-1.5 w-6 h-6 flex items-center justify-center cursor-nwse-resize opacity-60 hover:opacity-100"
+                        className="no-select absolute right-0 bottom-0 w-4 h-4 bg-[#161616] text-white font-mono text-[9px] flex items-center justify-center cursor-nwse-resize"
                       >
-                        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-                          <path d="M13 6L6 13M13 10.5L10.5 13" />
-                        </svg>
+                        ◢
                       </div>
                     </>
                   )}
@@ -702,12 +729,12 @@ export function BentoCanvas({
         </div>
       </div>
 
-      {/* Right-Click Context Menu */}
+      {/* Sharp Bauhaus Right-Click Context Menu */}
       {contextMenu && activeMenuCard && activeMenuLayout && (
         <div
           style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
           onClick={(e) => e.stopPropagation()}
-          className="fixed z-50 w-54 rounded-2xl bg-[var(--card)] border border-[var(--border)] shadow-2xl p-1.5 text-xs space-y-1"
+          className="fixed z-50 w-56 bg-[#F4F1EA] border-2 border-[#161616] shadow-[6px_6px_0_#161616] p-1.5 text-xs space-y-1"
         >
           <button
             type="button"
@@ -715,10 +742,10 @@ export function BentoCanvas({
               onEditCard(activeMenuCard);
               setContextMenu(null);
             }}
-            className="w-full text-left px-3 py-2 rounded-xl hover:bg-[var(--background)] flex items-center justify-between cursor-pointer"
+            className="w-full text-left px-3 py-1.5 hover:bg-[#161616] hover:text-white font-bold flex items-center justify-between cursor-pointer"
           >
             <span>编辑模块</span>
-            <span className="text-[11px] text-[var(--muted-foreground)]">点击</span>
+            <span className="font-mono text-[10px] opacity-65">EDIT</span>
           </button>
 
           <button
@@ -727,14 +754,14 @@ export function BentoCanvas({
               onDuplicateCard(activeMenuCard);
               setContextMenu(null);
             }}
-            className="w-full text-left px-3 py-2 rounded-xl hover:bg-[var(--background)] flex items-center justify-between cursor-pointer"
+            className="w-full text-left px-3 py-1.5 hover:bg-[#161616] hover:text-white font-bold cursor-pointer"
           >
-            <span>复制副本</span>
+            复制副本
           </button>
 
-          {/* Finish Swatches */}
-          <div className="px-3 py-2 border-t border-[var(--border)] flex items-center justify-between">
-            <span className="text-[var(--muted-foreground)]">质感</span>
+          {/* Motif Swatches */}
+          <div className="px-3 py-2 border-t border-[#161616]/20 flex items-center justify-between">
+            <span className="font-mono text-[11px] text-[var(--muted-foreground)]">MOTIF</span>
             <div className="flex items-center gap-1.5">
               {CARD_FINISHES.map((f) => (
                 <button
@@ -745,9 +772,9 @@ export function BentoCanvas({
                     onUpdateCard(activeMenuCard, { finish: f.id as CardFinish });
                     setContextMenu(null);
                   }}
-                  style={{ background: f.dot, borderColor: f.border }}
-                  className={`w-4.5 h-4.5 rounded-full border cursor-pointer transition ${
-                    (activeMenuCard.finish || 'default') === f.id ? 'ring-2 ring-offset-1 ring-[var(--foreground)]' : ''
+                  style={{ background: f.dot }}
+                  className={`w-4.5 h-4.5 border-[1.5px] border-[#161616] cursor-pointer ${
+                    (activeMenuCard.finish || 'default') === f.id ? 'ring-2 ring-offset-1 ring-[#161616]' : ''
                   }`}
                 />
               ))}
@@ -757,7 +784,7 @@ export function BentoCanvas({
           {/* Quick Sizes */}
           {!isMobile && (
             <div className="px-3 py-1.5 flex items-center justify-between">
-              <span className="text-[var(--muted-foreground)]">尺寸</span>
+              <span className="font-mono text-[11px] text-[var(--muted-foreground)]">SIZE</span>
               <div className="flex items-center gap-1">
                 {SIZE_PRESETS.map(([label, pw, ph]) => (
                   <button
@@ -767,10 +794,10 @@ export function BentoCanvas({
                       applyPresetSize(activeMenuCard, pw, ph);
                       setContextMenu(null);
                     }}
-                    className={`px-2 py-0.5 rounded-lg border text-[11px] cursor-pointer ${
+                    className={`px-2 py-0.5 border border-[#161616] font-mono text-[10px] font-bold cursor-pointer ${
                       activeMenuLayout.w === pw && activeMenuLayout.h === ph
-                        ? 'bg-[var(--foreground)] text-[var(--background)] border-[var(--foreground)]'
-                        : 'border-[var(--border)] hover:bg-[var(--background)]'
+                        ? 'bg-[#161616] text-white'
+                        : 'bg-white hover:bg-[#DFB0AF]'
                     }`}
                   >
                     {label}
@@ -782,8 +809,8 @@ export function BentoCanvas({
 
           {/* Move to another board */}
           {boards.length > 1 && (
-            <div className="px-3 py-1.5 border-t border-[var(--border)] space-y-1">
-              <span className="text-[11px] text-[var(--muted-foreground)] block">移动到画布</span>
+            <div className="px-3 py-1.5 border-t border-[#161616]/20 space-y-1">
+              <span className="font-mono text-[10px] text-[var(--muted-foreground)] block">MOVE TO BOARD</span>
               <div className="flex flex-wrap gap-1">
                 {boards
                   .filter((b) => b.id !== (activeMenuCard.board_id || 'main'))
@@ -795,7 +822,7 @@ export function BentoCanvas({
                         onMoveCardToBoard(activeMenuCard, b.id);
                         setContextMenu(null);
                       }}
-                      className="px-2 py-0.5 rounded-lg bg-[var(--background)] border border-[var(--border)] hover:border-[var(--foreground)] cursor-pointer"
+                      className="px-2 py-0.5 bg-white border border-[#161616] hover:bg-[#161616] hover:text-white cursor-pointer"
                     >
                       {b.title}
                     </button>
@@ -812,7 +839,7 @@ export function BentoCanvas({
               });
               setContextMenu(null);
             }}
-            className="w-full text-left px-3 py-2 rounded-xl hover:bg-[var(--background)] border-t border-[var(--border)] cursor-pointer"
+            className="w-full text-left px-3 py-1.5 hover:bg-[#161616] hover:text-white border-t border-[#161616]/20 cursor-pointer"
           >
             {activeMenuCard.sensitive === 'TRUE' ? '取消敏感标记' : '设为敏感（公司隐藏）'}
           </button>
@@ -823,7 +850,7 @@ export function BentoCanvas({
               onDeleteCard(activeMenuCard);
               setContextMenu(null);
             }}
-            className="w-full text-left px-3 py-2 rounded-xl hover:bg-rose-50 text-rose-600 cursor-pointer"
+            className="w-full text-left px-3 py-1.5 hover:bg-rose-600 hover:text-white text-rose-600 font-bold cursor-pointer"
           >
             删除模块
           </button>
