@@ -110,7 +110,7 @@ function CanvasShell() {
 
   if (authState === 'checking') {
     return (
-      <div className="min-h-screen canvas-bauhaus flex items-center justify-center font-mono text-xs text-[var(--muted-foreground)]">
+      <div className="min-h-screen canvas-dunkirk flex items-center justify-center nolan-display text-[11px] text-[var(--muted-foreground)]">
         LOADING LIFEOS…
       </div>
     );
@@ -310,12 +310,12 @@ function CanvasShell() {
 
   const syncDot =
     syncState === 'error'
-      ? 'bg-rose-600'
+      ? 'bg-[#D94E28]'
       : pendingCount > 0 || syncState === 'offline'
         ? 'bg-amber-500'
         : syncState === 'syncing'
-          ? 'bg-[#283D92] animate-pulse'
-          : 'bg-[#02CA0E]';
+          ? 'bg-[#25548A] animate-pulse'
+          : 'bg-[#2A7A68]';
 
   const modalBoardCardCount =
     boardModal && boardModal !== 'new'
@@ -323,23 +323,18 @@ function CanvasShell() {
       : 0;
 
   return (
-    <div className="min-h-screen canvas-bauhaus">
-      {/* Bauhaus Architectural Header */}
-      <header className="sticky top-0 z-30 border-b-[1.5px] border-[#161616] bg-[#F4F1EA]">
+    <div className="min-h-screen canvas-dunkirk">
+      {/* Dunkirk Editorial Header */}
+      <header className="sticky top-0 z-30 border-b border-[var(--hairline)] bg-[#ECF0F4]/90 backdrop-blur-xl">
         <div className="max-w-6xl mx-auto px-4 sm:px-5 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-4 min-w-0">
-            <div className="flex items-center gap-2 shrink-0">
-              {/* Bauhaus Trio Mark */}
-              <div className="flex items-center">
-                <span className="w-4 h-4 rounded-full bg-[#283D92] inline-block" />
-                <span className="w-4 h-4 bg-[#6C4D6D] inline-block -ml-1" />
-                <span className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[15px] border-b-[#02CA0E] inline-block -ml-1" />
-              </div>
-              <span className="font-bold text-sm tracking-widest uppercase">LIFEOS</span>
-              <span className="hidden lg:inline font-mono text-[11px] text-[var(--muted-foreground)]">/ {formatDateLabel()}</span>
+            <div className="flex items-center gap-2.5 shrink-0">
+              <span className="w-2.5 h-2.5 bg-[#D94E28] inline-block shrink-0" />
+              <span className="nolan-display text-xs font-bold text-[#0F1E30]">LIFEOS</span>
+              <span className="hidden lg:inline font-mono text-[11px] text-[var(--muted-foreground)]">· {formatDateLabel()}</span>
             </div>
 
-            {/* Sharp Board Tabs */}
+            {/* Editorial Board Tabs */}
             <nav className="flex items-center gap-1.5 overflow-x-auto">
               {sortedBoards.map((b) => {
                 const isActive = activeBoardId === b.id;
@@ -350,15 +345,17 @@ function CanvasShell() {
                       e.preventDefault();
                       setBoardModal(b);
                     }}
-                    className={`inline-flex items-center border-[1.5px] border-[#161616] font-mono text-xs font-bold transition shrink-0 ${
-                      isActive ? 'bg-[#161616] text-white' : 'bg-white text-[#161616] hover:bg-[#DFB0AF]'
+                    className={`inline-flex items-center rounded-[2px] border text-[11px] font-semibold transition shrink-0 ${
+                      isActive
+                        ? 'bg-[#0F1E30] border-[#0F1E30] text-white'
+                        : 'bg-white/80 border-[var(--hairline)] text-[#0F1E30] hover:border-[var(--hairline-strong)] hover:bg-white'
                     }`}
                   >
                     <button
                       type="button"
                       onClick={() => setActiveBoardId(b.id)}
                       title="右键或点击右侧齿轮管理画布"
-                      className={`py-1 cursor-pointer ${isActive ? 'pl-2.5 pr-1.5' : 'px-2.5'}`}
+                      className={`py-1 nolan-title cursor-pointer ${isActive ? 'pl-2.5 pr-1.5' : 'px-2.5'}`}
                     >
                       {b.title}
                     </button>
@@ -367,7 +364,7 @@ function CanvasShell() {
                         type="button"
                         onClick={() => setBoardModal(b)}
                         title="画布设置（重命名 / 敏感 / 删除）"
-                        className="pr-2 pl-0.5 py-1 opacity-75 hover:opacity-100 cursor-pointer"
+                        className="pr-2 pl-0.5 py-1 opacity-70 hover:opacity-100 cursor-pointer"
                       >
                         <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <circle cx="12" cy="12" r="3" />
@@ -382,21 +379,21 @@ function CanvasShell() {
                 type="button"
                 onClick={() => setBoardModal('new')}
                 title="新建画布"
-                className="w-7 h-7 border-[1.5px] border-dashed border-[#161616] bg-white hover:bg-[#161616] hover:text-white font-mono text-xs font-bold flex items-center justify-center cursor-pointer shrink-0 transition"
+                className="w-7 h-7 rounded-[2px] border border-dashed border-[var(--hairline-strong)] bg-white/60 hover:bg-[#0F1E30] hover:border-[#0F1E30] hover:text-white font-mono text-xs font-semibold flex items-center justify-center cursor-pointer shrink-0 transition"
               >
                 +
               </button>
             </nav>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0 font-mono text-[11px]">
+          <div className="flex items-center gap-1.5 shrink-0">
             {device === 'work' && (
-              <span className="px-2 py-1 border-[1.5px] border-[#161616] bg-[#DFB0AF] font-bold">
+              <span className="px-2 py-1 rounded-[2px] border border-[#D94E28]/40 bg-[#D94E28]/10 text-[#D94E28] nolan-label text-[10px] font-bold">
                 WORK
               </span>
             )}
             {backendKind === 'mock' && (
-              <span className="hidden sm:inline px-2 py-1 border border-[#161616]/40 text-[var(--muted-foreground)]">
+              <span className="hidden sm:inline px-2 py-1 rounded-[2px] border border-[var(--hairline)] nolan-label text-[10px] text-[var(--muted-foreground)]">
                 MOCK
               </span>
             )}
@@ -405,21 +402,21 @@ function CanvasShell() {
               type="button"
               onClick={() => setSearchOpen(true)}
               title="搜索所有模块 (Ctrl+K)"
-              className="bauhaus-btn bg-white p-1.5 cursor-pointer"
+              className="dunkirk-btn bg-white/80 hover:bg-white p-1.5 text-[#0F1E30] cursor-pointer"
             >
-              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="11" cy="11" r="8" />
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
             </button>
 
-            <div className="hidden md:inline-flex items-center border-[1.5px] border-[#161616] bg-white">
+            <div className="hidden md:inline-flex items-center rounded-[2px] border border-[var(--hairline-strong)] bg-white/80 overflow-hidden">
               <button
                 type="button"
                 onClick={() => setViewMode('desktop')}
                 title="12 列桌面拼图"
-                className={`p-1.5 cursor-pointer ${
-                  viewMode === 'desktop' ? 'bg-[#161616] text-white' : 'text-[#161616]'
+                className={`p-1.5 cursor-pointer transition ${
+                  viewMode === 'desktop' ? 'bg-[#0F1E30] text-white' : 'text-[var(--muted-foreground)] hover:text-[#0F1E30]'
                 }`}
               >
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
@@ -432,8 +429,8 @@ function CanvasShell() {
                 type="button"
                 onClick={() => setViewMode('mobile')}
                 title="2 列手机预览"
-                className={`p-1.5 cursor-pointer border-l-[1.5px] border-[#161616] ${
-                  viewMode === 'mobile' ? 'bg-[#161616] text-white' : 'text-[#161616]'
+                className={`p-1.5 cursor-pointer border-l border-[var(--hairline)] transition ${
+                  viewMode === 'mobile' ? 'bg-[#0F1E30] text-white' : 'text-[var(--muted-foreground)] hover:text-[#0F1E30]'
                 }`}
               >
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
@@ -447,9 +444,9 @@ function CanvasShell() {
               type="button"
               onClick={() => void refresh(true)}
               title="双向同步：推送本地改动到 Google Sheets，并拉取表格最新数据"
-              className="bauhaus-btn bg-[#DFB0AF] px-2.5 py-1 font-bold flex items-center gap-1.5 cursor-pointer"
+              className="dunkirk-btn bg-white/85 hover:bg-white hover:border-[#D94E28] px-2.5 py-1 nolan-label text-[10px] font-semibold text-[#0F1E30] flex items-center gap-1.5 cursor-pointer"
             >
-              <span className={`w-2 h-2 border border-[#161616] ${syncDot}`} />
+              <span className={`w-1.5 h-1.5 rounded-full ${syncDot}`} />
               <span className="hidden sm:inline">{formatSyncLabel(syncState, pendingCount, lastSyncedAt)}</span>
             </button>
 
@@ -457,7 +454,7 @@ function CanvasShell() {
               type="button"
               onClick={() => setBlurred((v) => !v)}
               title="一键遮挡 (Alt+B)"
-              className="bauhaus-btn bg-white px-2.5 py-1 font-bold cursor-pointer"
+              className="dunkirk-btn bg-white/85 hover:bg-white px-2.5 py-1 nolan-label text-[10px] font-semibold text-[#0F1E30] cursor-pointer"
             >
               {blurred ? '恢复' : '遮挡'}
             </button>
@@ -465,7 +462,7 @@ function CanvasShell() {
             <button
               type="button"
               onClick={() => void logout()}
-              className="px-2 py-1 text-[var(--muted-foreground)] hover:text-rose-600 font-bold cursor-pointer"
+              className="px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)] hover:text-[#D94E28] transition cursor-pointer"
             >
               退出
             </button>
@@ -473,7 +470,7 @@ function CanvasShell() {
         </div>
       </header>
 
-      {/* Main Bauhaus Canvas */}
+      {/* Main Canvas */}
       <main className={`max-w-6xl mx-auto px-4 sm:px-5 pt-6 pb-32 transition ${blurred ? 'blur-lg select-none pointer-events-none' : ''}`}>
         <BentoCanvas
           cards={boardCards}
@@ -551,23 +548,23 @@ function CanvasShell() {
       {confirmDeleteCard && (
         <div
           onClick={() => setConfirmDeleteCard(null)}
-          className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4"
+          className="fixed inset-0 z-[60] bg-[#0F1E30]/50 backdrop-blur-xs flex items-center justify-center p-4"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-xs bg-[#F4F1EA] border-2 border-[#161616] shadow-[8px_8px_0_#161616] p-6 space-y-4"
+            className="w-full max-w-xs bg-white border border-[var(--hairline-strong)] rounded-[3px] shadow-[0_24px_56px_-18px_rgba(15,30,48,0.3)] p-6 space-y-4"
           >
             <div className="space-y-1.5">
-              <h3 className="text-sm font-bold">确认删除这个模块？</h3>
+              <h3 className="text-sm font-bold text-[#0F1E30]">确认删除这个模块？</h3>
               <p className="text-xs text-[var(--muted-foreground)] leading-relaxed">
-                将删除「<span className="text-[#161616] font-bold">{confirmDeleteCard.title || '未命名模块'}</span>」，删除后可在 Google 表格的 <code className="font-mono">Cards</code> 表中将 <code className="font-mono">deleted</code> 改回 <code className="font-mono">FALSE</code> 找回。
+                将删除「<span className="text-[#0F1E30] font-semibold">{confirmDeleteCard.title || '未命名模块'}</span>」，删除后可在 Google 表格的 <code className="font-mono">Cards</code> 表中将 <code className="font-mono">deleted</code> 改回 <code className="font-mono">FALSE</code> 找回。
               </p>
             </div>
             <div className="flex items-center justify-end gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => setConfirmDeleteCard(null)}
-                className="bauhaus-btn bg-white px-3.5 py-1.5 font-mono text-xs cursor-pointer"
+                className="dunkirk-btn bg-white px-3.5 py-1.5 nolan-label text-[10px] font-semibold cursor-pointer"
               >
                 取消
               </button>
@@ -580,7 +577,7 @@ function CanvasShell() {
                   void deleteRow('Cards', target);
                   showToast('模块已删除');
                 }}
-                className="bauhaus-btn bg-rose-600 text-white px-4 py-1.5 font-mono text-xs font-bold cursor-pointer"
+                className="bg-[#D94E28] text-white px-4 py-1.5 rounded-[2px] nolan-label text-[10px] font-semibold cursor-pointer"
               >
                 确认删除
               </button>
@@ -592,16 +589,16 @@ function CanvasShell() {
       {lightboxSrc && (
         <div
           onClick={() => setLightboxSrc(null)}
-          className="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center p-6 cursor-zoom-out"
+          className="fixed inset-0 z-[70] bg-[#0F1E30]/85 backdrop-blur-xs flex items-center justify-center p-6 cursor-zoom-out"
         >
-          <img src={lightboxSrc} alt="" className="max-w-full max-h-[88vh] border-2 border-white shadow-[10px_10px_0_#283D92]" />
+          <img src={lightboxSrc} alt="" className="max-w-full max-h-[88vh] rounded-[3px] border border-white/25 shadow-2xl" />
         </div>
       )}
 
       {toast && (
         <div
           onClick={clearToast}
-          className="fixed top-16 left-1/2 -translate-x-1/2 z-[75] px-4 py-1.5 bg-[#161616] text-white border border-[#161616] shadow-[4px_4px_0_#283D92] font-mono text-xs font-bold cursor-pointer max-w-[90vw] text-center"
+          className="fixed top-16 left-1/2 -translate-x-1/2 z-[75] px-4 py-1.5 bg-[#0F1E30] text-white border border-[#D94E28]/60 rounded-[2px] shadow-lg nolan-label text-[10px] font-semibold cursor-pointer max-w-[90vw] text-center"
         >
           {toast}
         </div>

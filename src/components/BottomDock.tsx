@@ -33,16 +33,16 @@ export function BottomDock({
       {linkOpen && (
         <form
           onSubmit={submitLink}
-          className="pointer-events-auto bauhaus-dock p-2 pl-4 flex items-center gap-2.5 w-full max-w-lg"
+          className="pointer-events-auto dunkirk-dock p-2 pl-4 flex items-center gap-2.5 w-full max-w-lg"
         >
           <input
             type="text"
             value={linkTitle}
             onChange={(e) => setLinkTitle(e.target.value)}
             placeholder="名称"
-            className="w-24 sm:w-32 bg-transparent text-xs font-bold focus:outline-none placeholder:text-[var(--muted-foreground)]"
+            className="w-24 sm:w-32 bg-transparent text-xs font-medium focus:outline-none placeholder:text-[var(--muted-foreground)]"
           />
-          <span className="w-[1.5px] h-5 bg-[#161616]" />
+          <span className="w-px h-4 bg-[var(--hairline-strong)]" />
           <input
             type="text"
             required
@@ -54,14 +54,14 @@ export function BottomDock({
           />
           <button
             type="submit"
-            className="bauhaus-btn px-3.5 py-1.5 bg-[#161616] text-white text-xs font-mono font-bold cursor-pointer shrink-0"
+            className="px-3.5 py-1.5 bg-[#0F1E30] text-white hover:bg-[#D94E28] transition nolan-label text-[10px] font-semibold rounded-[2px] cursor-pointer shrink-0"
           >
             ADD
           </button>
           <button
             type="button"
             onClick={() => setLinkOpen(false)}
-            className="p-1.5 text-[var(--muted-foreground)] hover:text-[#161616] cursor-pointer"
+            className="p-1.5 text-[var(--muted-foreground)] hover:text-[#0F1E30] cursor-pointer"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -71,32 +71,34 @@ export function BottomDock({
         </form>
       )}
 
-      <div className="pointer-events-auto bauhaus-dock p-2 flex items-center gap-2 text-xs font-bold">
-        <span className="hidden sm:inline-flex items-center px-2 font-mono text-[11px] uppercase tracking-wider text-[var(--muted-foreground)] select-none">
+      <div className="pointer-events-auto dunkirk-dock px-2.5 py-1.5 flex items-center gap-1 text-[11px]">
+        <span className="hidden sm:inline-flex items-center px-2 nolan-display text-[10px] font-semibold text-[var(--muted-foreground)] select-none">
           NEW +
         </span>
 
         <button
           type="button"
           onClick={onAddChecklist}
-          className="bauhaus-btn px-4 py-2 bg-[#283D92] text-white flex items-center gap-2 cursor-pointer"
+          className="nolan-label px-3.5 py-2 rounded-[2px] text-[10px] font-semibold text-[#0F1E30] hover:bg-[#D94E28] hover:text-white transition flex items-center gap-1.5 cursor-pointer"
         >
-          <span className="w-2.5 h-2.5 rounded-full bg-white inline-block" />
-          <span>清单</span>
+          <span className="w-1.5 h-1.5 bg-[#D94E28] group-hover:bg-white inline-block" />
+          <span>清单 LIST</span>
         </button>
+
+        <span className="w-px h-4 bg-[var(--hairline)]" />
 
         <button
           type="button"
           onClick={onAddNote}
-          className="bauhaus-btn px-4 py-2 bg-[#DFB0AF] text-[#161616] flex items-center gap-2 cursor-pointer"
+          className="nolan-label px-3.5 py-2 rounded-[2px] text-[10px] font-semibold text-[#0F1E30] hover:bg-[#0F1E30] hover:text-white transition flex items-center gap-1.5 cursor-pointer"
         >
-          <span className="w-2.5 h-2.5 rounded-t-full bg-[#161616] inline-block" />
-          <span>笔记</span>
+          <span>笔记 NOTE</span>
         </button>
 
-        <label className="bauhaus-btn px-4 py-2 bg-[#6C4D6D] text-white flex items-center gap-2 cursor-pointer">
-          <span className="w-2.5 h-2.5 bg-white inline-block" />
-          <span>{uploading ? '上传中…' : '图片'}</span>
+        <span className="w-px h-4 bg-[var(--hairline)]" />
+
+        <label className="nolan-label px-3.5 py-2 rounded-[2px] text-[10px] font-semibold text-[#0F1E30] hover:bg-[#25548A] hover:text-white transition flex items-center gap-1.5 cursor-pointer">
+          <span>{uploading ? '上传中…' : '图片 IMG'}</span>
           <input
             type="file"
             accept="image/*"
@@ -110,15 +112,18 @@ export function BottomDock({
           />
         </label>
 
+        <span className="w-px h-4 bg-[var(--hairline)]" />
+
         <button
           type="button"
           onClick={() => setLinkOpen((v) => !v)}
-          className={`bauhaus-btn px-4 py-2 flex items-center gap-2 cursor-pointer ${
-            linkOpen ? 'bg-[#02CA0E] text-[#161616]' : 'bg-white text-[#161616] hover:bg-[#02CA0E] hover:text-[#161616]'
+          className={`nolan-label px-3.5 py-2 rounded-[2px] text-[10px] font-semibold transition flex items-center gap-1.5 cursor-pointer ${
+            linkOpen
+              ? 'bg-[#25548A] text-white'
+              : 'text-[#0F1E30] hover:bg-[#25548A] hover:text-white'
           }`}
         >
-          <span className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[9px] border-b-[#161616] inline-block" />
-          <span>关联文档</span>
+          <span>关联文档 DOC</span>
         </button>
       </div>
     </div>

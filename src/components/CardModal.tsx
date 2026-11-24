@@ -22,10 +22,10 @@ export interface CardDraft {
 }
 
 function linkDotColor(kind: LinkKind): string {
-  if (kind === 'gsheet') return '#02CA0E';
-  if (kind === 'gdoc') return '#283D92';
-  if (kind === 'gdrive') return '#DFB0AF';
-  return '#6C4D6D';
+  if (kind === 'gsheet') return '#2A7A68';
+  if (kind === 'gdoc') return '#25548A';
+  if (kind === 'gdrive') return '#D94E28';
+  return '#60768C';
 }
 
 function normalizeUrl(raw: string): string {
@@ -249,24 +249,24 @@ export function CardModal({
   return (
     <div
       onClick={handleBackdropClick}
-      className="fixed inset-0 z-50 bg-black/45 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      className="fixed inset-0 z-50 bg-[#0F1E30]/45 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full sm:max-w-xl bg-[#F4F1EA] border-2 border-[#161616] shadow-[10px_10px_0_#161616] overflow-hidden flex flex-col max-h-[90vh]"
+        className="w-full sm:max-w-xl bg-white border border-[var(--hairline-strong)] rounded-[3px] shadow-[0_24px_60px_-18px_rgba(15,30,48,0.32)] overflow-hidden flex flex-col max-h-[90vh]"
       >
-        {/* Top Bauhaus Motif Strip */}
-        <div className="h-2.5 w-full shrink-0" style={{ background: activeMotif.dot }} />
+        {/* Top 2px Editorial Accent Strip */}
+        <div className="h-[3px] w-full shrink-0" style={{ background: activeMotif.dot }} />
 
         {/* Header */}
-        <div className="px-5 pt-4 pb-3 border-b-[1.5px] border-[#161616] bg-white flex items-center justify-between gap-3">
+        <div className="px-5 pt-4 pb-3 border-b border-[var(--hairline)] bg-[#ECF0F4]/40 flex items-center justify-between gap-3">
           <div className="flex-1 min-w-0 space-y-1">
             <input
               type="text"
               value={tag}
               onChange={(e) => setTag(e.target.value)}
               placeholder="标签（如：LIST / 婚礼 / WORK）"
-              className="w-full bg-transparent font-mono text-[11px] uppercase tracking-widest text-[var(--muted-foreground)] focus:outline-none"
+              className="w-full bg-transparent nolan-label text-[10px] font-semibold text-[var(--muted-foreground)] focus:outline-none"
             />
             <input
               type="text"
@@ -274,14 +274,14 @@ export function CardModal({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder={isNew ? '输入模块标题（例如：超市购物清单）…' : '模块标题'}
-              className="w-full bg-transparent text-base font-bold tracking-tight focus:outline-none"
+              className="w-full bg-transparent nolan-title text-base font-bold text-[#0F1E30] focus:outline-none"
             />
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
               onClick={onClose}
-              className="bauhaus-btn bg-white px-3 py-1.5 font-mono text-xs cursor-pointer"
+              className="dunkirk-btn bg-white px-3 py-1.5 nolan-label text-[10px] font-semibold cursor-pointer"
             >
               取消
             </button>
@@ -290,7 +290,7 @@ export function CardModal({
               disabled={uploading}
               onClick={() => void handleSave()}
               title="保存 (Ctrl+Enter)"
-              className="bauhaus-btn bg-[#161616] text-white px-4 py-1.5 font-mono text-xs font-bold cursor-pointer disabled:opacity-50"
+              className="bg-[#0F1E30] hover:bg-[#D94E28] text-white px-4 py-1.5 rounded-[2px] nolan-label text-[10px] font-semibold transition cursor-pointer disabled:opacity-50"
             >
               {isNew ? '创建' : 'SAVE'}
             </button>
@@ -299,35 +299,37 @@ export function CardModal({
 
         {/* Body */}
         <div className="px-5 py-4 overflow-y-auto space-y-5 text-xs">
-          {/* Motif + Board Selector */}
+          {/* Tone + Board Selector */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="font-mono text-[11px] text-[var(--muted-foreground)] mr-1">MOTIF:</span>
+              <span className="nolan-label text-[10px] font-semibold text-[var(--muted-foreground)] mr-1">TONE</span>
               {CARD_FINISHES.map((f) => (
                 <button
                   key={f.id}
                   type="button"
                   onClick={() => setFinish(f.id)}
-                  style={{
-                    background: f.dot,
-                    color: f.id === 'warm' || f.id === 'sage' ? '#161616' : '#FFFFFF',
-                  }}
-                  className={`px-2.5 py-1 border-[1.5px] border-[#161616] font-bold text-[11px] cursor-pointer transition ${
-                    finish === f.id ? 'shadow-[3px_3px_0_#161616] -translate-x-0.5 -translate-y-0.5' : 'opacity-70 hover:opacity-100'
+                  className={`px-2.5 py-1 rounded-[2px] border text-[11px] font-medium flex items-center gap-1.5 cursor-pointer transition ${
+                    finish === f.id
+                      ? 'border-[#0F1E30] bg-[#0F1E30] text-white'
+                      : 'border-[var(--hairline-strong)] bg-white text-[#0F1E30] hover:border-[#0F1E30]'
                   }`}
                 >
-                  {f.label}
+                  <span
+                    className="w-2 h-2 inline-block shrink-0"
+                    style={{ background: f.id === 'ink' && finish === 'ink' ? '#D94E28' : f.dot }}
+                  />
+                  <span>{f.label}</span>
                 </button>
               ))}
             </div>
 
             {boards.length > 1 && (
-              <label className="flex items-center gap-1.5 font-mono text-[11px] text-[var(--muted-foreground)]">
+              <label className="flex items-center gap-1.5 nolan-label text-[10px] text-[var(--muted-foreground)]">
                 <span>画布</span>
                 <select
                   value={boardId}
                   onChange={(e) => setBoardId(e.target.value)}
-                  className="bg-white border-[1.5px] border-[#161616] px-2 py-1 text-[#161616]"
+                  className="bg-[#ECF0F4]/60 border border-[var(--hairline-strong)] rounded-[2px] px-2 py-1 text-xs text-[#0F1E30]"
                 >
                   {boards.map((b) => (
                     <option key={b.id} value={b.id}>
@@ -342,12 +344,12 @@ export function CardModal({
           {/* Text & Checklist */}
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <span className="font-bold">文字与清单（清单行按回车自动续接，Ctrl+Enter 保存）</span>
+              <span className="font-semibold text-[#0F1E30]">文字与清单（清单行按回车自动续接，Ctrl+Enter 保存）</span>
               <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   type="button"
                   onClick={() => setContent((prev) => (prev ? prev.trimEnd() + '\n' : '') + '- [ ] ')}
-                  className="bauhaus-btn bg-white px-2.5 py-1 font-mono text-[11px] cursor-pointer"
+                  className="dunkirk-btn bg-white px-2.5 py-1 font-mono text-[11px] cursor-pointer"
                 >
                   + [ ]
                 </button>
@@ -362,7 +364,7 @@ export function CardModal({
                     );
                     showToast('已清理已完成项');
                   }}
-                  className="bauhaus-btn bg-white px-2.5 py-1 font-mono text-[11px] cursor-pointer"
+                  className="dunkirk-btn bg-white px-2.5 py-1 text-[11px] cursor-pointer"
                 >
                   清理已完成
                 </button>
@@ -374,15 +376,15 @@ export function CardModal({
               onChange={(e) => setContent(e.target.value)}
               onKeyDown={handleTextareaKeyDown}
               placeholder="自由写文字，或以 - [ ] 开头生成可勾选清单…"
-              className="w-full bg-white border-[1.5px] border-[#161616] p-3 text-xs leading-relaxed font-mono focus:outline-none"
+              className="w-full bg-[#ECF0F4]/40 border border-[var(--hairline-strong)] rounded-[2px] p-3 text-xs leading-relaxed font-mono focus:outline-none focus:bg-white focus:border-[#0F1E30] transition"
             />
           </div>
 
           {/* Images */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="font-bold">图片（支持 Ctrl+V 粘贴截图，自动压缩存 Drive）</span>
-              <label className="bauhaus-btn bg-white px-3 py-1 font-mono text-[11px] font-bold cursor-pointer">
+              <span className="font-semibold text-[#0F1E30]">图片（支持 Ctrl+V 粘贴截图，自动压缩存 Drive）</span>
+              <label className="dunkirk-btn bg-white px-3 py-1 nolan-label text-[10px] font-semibold cursor-pointer">
                 {uploading ? 'UPLOADING…' : '+ 上传图片'}
                 <input
                   type="file"
@@ -406,7 +408,7 @@ export function CardModal({
                   return (
                     <div
                       key={im.id}
-                      className="border-[1.5px] border-[#161616] group bg-white flex flex-col"
+                      className="border border-[var(--hairline-strong)] rounded-[2px] overflow-hidden group bg-white flex flex-col"
                     >
                       <div
                         style={
@@ -424,7 +426,7 @@ export function CardModal({
                             e.stopPropagation();
                             setImages((prev) => prev.filter((_, idx) => idx !== i));
                           }}
-                          className="absolute top-1 right-1 px-1.5 py-0.5 bg-[#161616] text-white font-mono text-[10px] opacity-0 group-hover:opacity-100 transition cursor-pointer"
+                          className="absolute top-1 right-1 px-1.5 py-0.5 bg-[#0F1E30]/90 text-white nolan-label text-[9px] opacity-0 group-hover:opacity-100 transition cursor-pointer"
                         >
                           DEL
                         </button>
@@ -438,14 +440,14 @@ export function CardModal({
                           )
                         }
                         placeholder="图片备注…"
-                        className="w-full px-2 py-1 text-[11px] bg-white border-t border-[#161616]/25 focus:outline-none"
+                        className="w-full px-2 py-1 text-[11px] bg-white border-t border-[var(--hairline)] focus:outline-none"
                       />
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <div className="border-[1.5px] border-dashed border-[#161616]/40 bg-white/60 py-4 text-center font-mono text-[11px] text-[var(--muted-foreground)]">
+              <div className="border border-dashed border-[var(--hairline-strong)] rounded-[2px] bg-[#ECF0F4]/40 py-4 text-center text-[11px] text-[var(--muted-foreground)]">
                 上传图片或直接按 Ctrl+V 粘贴截图
               </div>
             )}
@@ -453,22 +455,22 @@ export function CardModal({
 
           {/* Linked Docs / Sheets */}
           <div className="space-y-2">
-            <span className="font-bold block">关联 Google Docs / Sheets / 云端硬盘 / 网页链接</span>
+            <span className="font-semibold text-[#0F1E30] block">关联 Google Docs / Sheets / 云端硬盘 / 网页链接</span>
             {links.length > 0 && (
               <div className="space-y-1.5">
                 {links.map((l, i) => (
                   <div
                     key={l.id}
-                    className="flex items-center justify-between gap-2 px-3 py-2 bg-white border-[1.5px] border-[#161616]"
+                    className="flex items-center justify-between gap-2 px-3 py-2 bg-[#ECF0F4]/40 border border-[var(--hairline)] rounded-[2px]"
                   >
                     <a href={l.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 truncate hover:underline">
-                      <span className="w-2.5 h-2.5 shrink-0 border border-[#161616]" style={{ background: linkDotColor(l.kind) }} />
-                      <span className="font-bold truncate">{l.title}</span>
+                      <span className="w-2 h-2 shrink-0" style={{ background: linkDotColor(l.kind) }} />
+                      <span className="font-medium truncate text-[#0F1E30]">{l.title}</span>
                     </a>
                     <button
                       type="button"
                       onClick={() => setLinks((prev) => prev.filter((_, idx) => idx !== i))}
-                      className="font-mono text-[11px] text-rose-600 underline cursor-pointer shrink-0"
+                      className="text-[11px] text-[#D94E28] hover:underline cursor-pointer shrink-0"
                     >
                       移除
                     </button>
@@ -482,7 +484,7 @@ export function CardModal({
                 value={linkTitle}
                 onChange={(e) => setLinkTitle(e.target.value)}
                 placeholder="名称（如：排房表）"
-                className="w-full sm:w-36 bg-white border-[1.5px] border-[#161616] px-3 py-2 focus:outline-none"
+                className="w-full sm:w-36 bg-[#ECF0F4]/40 border border-[var(--hairline-strong)] rounded-[2px] px-3 py-2 focus:outline-none focus:bg-white focus:border-[#0F1E30]"
               />
               <input
                 type="text"
@@ -490,11 +492,11 @@ export function CardModal({
                 value={linkUrl}
                 onChange={(e) => setLinkUrl(e.target.value)}
                 placeholder="粘贴 Google Sheet / Doc 链接…"
-                className="flex-1 bg-white border-[1.5px] border-[#161616] px-3 py-2 font-mono focus:outline-none min-w-0"
+                className="flex-1 bg-[#ECF0F4]/40 border border-[var(--hairline-strong)] rounded-[2px] px-3 py-2 font-mono focus:outline-none focus:bg-white focus:border-[#0F1E30] min-w-0"
               />
               <button
                 type="submit"
-                className="bauhaus-btn bg-[#283D92] text-white px-3.5 py-2 font-mono font-bold cursor-pointer shrink-0"
+                className="bg-[#25548A] hover:bg-[#0F1E30] text-white px-3.5 py-2 rounded-[2px] nolan-label text-[10px] font-semibold transition cursor-pointer shrink-0"
               >
                 + ADD
               </button>
@@ -502,7 +504,7 @@ export function CardModal({
           </div>
 
           {/* Footer */}
-          <div className="pt-3 border-t border-[#161616]/25 flex items-center justify-between">
+          <div className="pt-3 border-t border-[var(--hairline)] flex items-center justify-between">
             <label className="flex items-center gap-2 cursor-pointer text-[var(--muted-foreground)]">
               <input
                 type="checkbox"
@@ -512,7 +514,7 @@ export function CardModal({
               <span>公司电脑模式下隐藏此模块</span>
             </label>
             {!isNew && card && (
-              <button type="button" onClick={() => onRequestDelete?.(card)} className="font-mono text-rose-600 underline cursor-pointer">
+              <button type="button" onClick={() => onRequestDelete?.(card)} className="nolan-label text-[10px] font-semibold text-[#D94E28] hover:underline cursor-pointer">
                 DELETE MODULE
               </button>
             )}

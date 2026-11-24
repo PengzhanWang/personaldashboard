@@ -1,15 +1,16 @@
 @import "tailwindcss";
 
 :root {
-  --background: #F4F1EA;
-  --foreground: #161616;
+  --background: #ECF0F4;
+  --foreground: #0F1E30;
   --card: #FFFFFF;
-  --border: #161616;
-  --muted-foreground: #5C5952;
-  --bauhaus-blue: #283D92;
-  --bauhaus-plum: #6C4D6D;
-  --bauhaus-blush: #DFB0AF;
-  --bauhaus-green: #02CA0E;
+  --muted-foreground: #5C6F84;
+  --hairline: rgba(15, 30, 48, 0.14);
+  --hairline-strong: rgba(15, 30, 48, 0.34);
+  --accent: #D94E28;
+  --accent-2: #25548A;
+  --card-shadow: 0 6px 22px -10px rgba(15, 30, 48, 0.12);
+  --card-radius: 3px;
 }
 
 @layer base {
@@ -19,24 +20,41 @@
     min-height: 100%;
     background-color: var(--background);
     color: var(--foreground);
-    font-family: "Futura", "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", sans-serif;
+    font-family: "Gotham", "Montserrat", "Avenir Next", "Century Gothic", "PingFang SC", "Hiragino Sans GB", -apple-system, sans-serif;
   }
 }
 
-/* Subtle architectural drafting background */
-.canvas-bauhaus {
+/* Nolan / Gotham wide-tracked display typography */
+.nolan-display {
+  font-family: "Gotham", "Montserrat", "Avenir Next", "Century Gothic", "Futura", "PingFang SC", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+}
+
+.nolan-label {
+  font-family: "Gotham", "Montserrat", "Avenir Next", "Century Gothic", "Futura", "PingFang SC", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.nolan-title {
+  font-family: "Gotham", "Montserrat", "Avenir Next", "Century Gothic", "Futura", "PingFang SC", sans-serif;
+  letter-spacing: 0.04em;
+}
+
+/* Subtle sea-mist architectural background */
+.canvas-dunkirk {
   background-color: var(--background);
   background-image:
-    linear-gradient(to right, rgba(22, 22, 22, 0.045) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(22, 22, 22, 0.045) 1px, transparent 1px);
-  background-size: 40px 40px;
+    radial-gradient(circle at 12% 0%, rgba(37, 84, 138, 0.055), transparent 45%),
+    radial-gradient(circle at 88% 10%, rgba(217, 78, 40, 0.04), transparent 40%);
 }
 
 /* 60fps Bento Grid Stage */
 .bento-stage {
   position: relative;
   width: 100%;
-  transition: height 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: height 280ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .bento-item {
@@ -45,9 +63,9 @@
   left: 0;
   will-change: transform, width, height;
   transition:
-    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
-    width 260ms cubic-bezier(0.22, 1, 0.36, 1),
-    height 260ms cubic-bezier(0.22, 1, 0.36, 1);
+    transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 280ms cubic-bezier(0.22, 1, 0.36, 1);
   z-index: 2;
 }
 
@@ -65,13 +83,16 @@
 .bento-card-inner {
   width: 100%;
   height: 100%;
-  border-radius: 0px;
-  border: 1.5px solid #161616;
-  background: #FFFFFF;
-  color: #161616;
+  border-radius: var(--card-radius);
+  border: 1px solid var(--hairline);
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: var(--card-shadow);
   transition:
-    transform 140ms ease,
-    box-shadow 140ms ease;
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    background-color 180ms ease;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -79,26 +100,29 @@
 }
 
 .bento-item:not(.is-dragging):hover .bento-card-inner {
-  transform: translate(-2px, -2px);
-  box-shadow: 6px 6px 0px #161616;
+  transform: translateY(-2px);
+  border-color: var(--hairline-strong);
+  box-shadow: 0 14px 28px -14px rgba(15, 30, 48, 0.18);
 }
 
 .bento-item.is-dragging .bento-card-inner {
-  transform: translate(-3px, -3px);
-  box-shadow: 12px 12px 0px #283D92;
+  transform: scale(1.02);
+  border-color: var(--accent);
+  box-shadow: 0 22px 46px -12px rgba(15, 30, 48, 0.28), 0 0 0 1px var(--accent);
 }
 
 .bento-item.is-resizing .bento-card-inner {
-  box-shadow: 8px 8px 0px #161616;
+  border-color: var(--accent-2);
+  box-shadow: 0 16px 32px -12px rgba(15, 30, 48, 0.22);
 }
 
 .bento-placeholder {
   position: absolute;
   top: 0;
   left: 0;
-  border-radius: 0px;
-  border: 1.5px dashed #283D92;
-  background: rgba(40, 61, 146, 0.08);
+  border-radius: var(--card-radius);
+  border: 1.5px dashed var(--accent);
+  background: rgba(217, 78, 40, 0.08);
   pointer-events: none;
   z-index: 1;
   opacity: 0;
@@ -113,70 +137,70 @@
   opacity: 1;
 }
 
-/* Inverted Bauhaus ink card for 'ink' finish */
+/* Inverted Deep Navy card for 'ink' finish */
 .finish-ink {
-  background: #161616;
-  color: #F4F1EA;
+  background: #0F1E30;
+  color: #ECF0F4;
+  border-color: rgba(236, 240, 244, 0.16);
 }
 .finish-ink .muted-text {
-  color: rgba(244, 241, 234, 0.65);
+  color: rgba(236, 240, 244, 0.62);
 }
 .finish-ink .subtle-pill {
-  background: rgba(244, 241, 234, 0.08);
-  border-color: rgba(244, 241, 234, 0.35);
-  color: #F4F1EA;
+  background: rgba(236, 240, 244, 0.08);
+  border-color: rgba(236, 240, 244, 0.25);
+  color: #ECF0F4;
+}
+.finish-ink .subtle-pill:hover {
+  background: #ECF0F4;
+  color: #0F1E30;
 }
 .finish-ink .card-divider {
-  border-color: rgba(244, 241, 234, 0.2);
+  border-color: rgba(236, 240, 244, 0.14);
 }
 
-/* Sharp Bauhaus square checkbox */
+/* Crisp editorial square checkbox */
 .check-box {
-  width: 15px;
-  height: 15px;
-  border-radius: 0px;
-  border: 1.5px solid #161616;
-  background: #FFFFFF;
+  width: 14px;
+  height: 14px;
+  border-radius: 1px;
+  border: 1.5px solid var(--hairline-strong);
+  background: transparent;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: background-color 120ms ease, color 120ms ease;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
   margin-top: 2px;
 }
 .finish-ink .check-box {
-  border-color: #F4F1EA;
-  background: transparent;
+  border-color: rgba(236, 240, 244, 0.5);
 }
 .check-box.checked {
-  background: #161616;
-  border-color: #161616;
+  background: var(--accent);
+  border-color: var(--accent);
   color: #FFFFFF;
 }
-.finish-ink .check-box.checked {
-  background: #F4F1EA;
-  border-color: #F4F1EA;
-  color: #161616;
+
+/* Editorial dock & crisp hairline buttons */
+.dunkirk-dock {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(18px);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--card-radius);
+  box-shadow: 0 12px 32px -12px rgba(15, 30, 48, 0.18);
 }
 
-/* Bauhaus architectural dock & buttons */
-.bauhaus-dock {
-  background: #F4F1EA;
-  border: 1.5px solid #161616;
-  box-shadow: 6px 6px 0px #161616;
+.dunkirk-btn {
+  border: 1px solid var(--hairline-strong);
+  border-radius: 2px;
+  transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease, transform 120ms ease;
 }
-
-.bauhaus-btn {
-  border: 1.5px solid #161616;
-  transition: transform 90ms ease, box-shadow 90ms ease, background-color 120ms ease, color 120ms ease;
+.dunkirk-btn:hover {
+  border-color: var(--foreground);
 }
-.bauhaus-btn:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: 3px 3px 0px #161616;
-}
-.bauhaus-btn:active {
-  transform: translate(1px, 1px);
-  box-shadow: 0px 0px 0px #161616;
+.dunkirk-btn:active {
+  transform: translateY(1px);
 }
 
 .hover-controls {
@@ -196,10 +220,10 @@
   width: 3px;
 }
 .card-scroll::-webkit-scrollbar-thumb {
-  background: #161616;
+  background: var(--hairline-strong);
 }
 .finish-ink .card-scroll::-webkit-scrollbar-thumb {
-  background: rgba(244, 241, 234, 0.45);
+  background: rgba(236, 240, 244, 0.35);
 }
 
 .no-select {

@@ -24,34 +24,29 @@ export function LoginView() {
   }
 
   return (
-    <div className="min-h-screen canvas-bauhaus flex items-center justify-center p-5">
+    <div className="min-h-screen canvas-dunkirk flex items-center justify-center p-5">
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-sm bg-white border-[1.5px] border-[#161616] shadow-[8px_8px_0_#161616] overflow-hidden"
+        className="w-full max-w-sm bg-white border border-[var(--hairline-strong)] rounded-[3px] shadow-[0_20px_50px_-20px_rgba(15,30,48,0.22)] overflow-hidden"
       >
-        <div className="h-2.5 w-full grid grid-cols-4">
-          <span className="bg-[#283D92]" />
-          <span className="bg-[#6C4D6D]" />
-          <span className="bg-[#DFB0AF]" />
-          <span className="bg-[#02CA0E]" />
+        <div className="h-[3px] w-full flex">
+          <span className="flex-1 bg-[#0F1E30]" />
+          <span className="w-16 bg-[#25548A]" />
+          <span className="w-10 bg-[#D94E28]" />
         </div>
 
         <div className="p-7 space-y-6">
           <div className="space-y-2">
             <div className="flex items-center gap-2.5">
-              <div className="flex items-center">
-                <span className="w-4 h-4 rounded-full bg-[#283D92] inline-block" />
-                <span className="w-4 h-4 bg-[#6C4D6D] inline-block -ml-1" />
-                <span className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[15px] border-b-[#02CA0E] inline-block -ml-1" />
-              </div>
-              <span className="font-bold text-sm tracking-widest uppercase">BAUHAUS · LIFEOS</span>
+              <span className="w-2.5 h-2.5 bg-[#D94E28] inline-block shrink-0" />
+              <span className="nolan-display text-xs font-bold text-[#0F1E30]">L I F E O S</span>
             </div>
-            <p className="text-xs text-[var(--muted-foreground)] font-mono">输入访问密码进入个人拼图画布</p>
+            <p className="text-xs text-[var(--muted-foreground)]">输入访问密码进入个人拼图画布</p>
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="password" className="block text-xs font-mono uppercase tracking-wider text-[var(--muted-foreground)]">
-              PASSWORD
+            <label htmlFor="password" className="block nolan-label text-[10px] font-semibold text-[var(--muted-foreground)]">
+              ACCESS KEY
             </label>
             <input
               id="password"
@@ -61,12 +56,12 @@ export function LoginView() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full bg-[#F4F1EA] border-[1.5px] border-[#161616] px-3.5 py-2.5 text-sm font-mono focus:outline-none focus:bg-white transition"
+              className="w-full bg-[#ECF0F4]/60 border border-[var(--hairline-strong)] rounded-[2px] px-3.5 py-2.5 text-sm font-mono focus:outline-none focus:bg-white focus:border-[#0F1E30] transition"
             />
           </div>
 
           <div className="space-y-1.5">
-            <span className="block text-xs font-mono uppercase tracking-wider text-[var(--muted-foreground)]">DEVICE</span>
+            <span className="block nolan-label text-[10px] font-semibold text-[var(--muted-foreground)]">DEVICE MODE</span>
             <div className="grid grid-cols-2 gap-2.5">
               {(
                 [
@@ -78,14 +73,14 @@ export function LoginView() {
                   key={val}
                   type="button"
                   onClick={() => setDevice(val)}
-                  className={`text-left border-[1.5px] border-[#161616] p-3 transition cursor-pointer ${
+                  className={`text-left border rounded-[2px] p-3 transition cursor-pointer ${
                     device === val
-                      ? 'bg-[#161616] text-white shadow-[3px_3px_0_#283D92]'
-                      : 'bg-white text-[#161616] hover:bg-[#F4F1EA]'
+                      ? 'bg-[#0F1E30] border-[#0F1E30] text-white'
+                      : 'bg-white border-[var(--hairline-strong)] text-[#0F1E30] hover:border-[#0F1E30]'
                   }`}
                 >
-                  <div className="text-xs font-bold">{title}</div>
-                  <div className={`text-[11px] mt-0.5 ${device === val ? 'text-white/75' : 'text-[var(--muted-foreground)]'}`}>
+                  <div className="text-xs font-semibold">{title}</div>
+                  <div className={`text-[11px] mt-0.5 ${device === val ? 'text-white/70' : 'text-[var(--muted-foreground)]'}`}>
                     {sub}
                   </div>
                 </button>
@@ -94,13 +89,13 @@ export function LoginView() {
           </div>
 
           {error && (
-            <div className="text-xs font-mono text-white bg-rose-600 border border-[#161616] px-3 py-2">{error}</div>
+            <div className="text-xs text-white bg-[#D94E28] rounded-[2px] px-3 py-2">{error}</div>
           )}
 
           <button
             type="submit"
             disabled={submitting || !password.trim()}
-            className="w-full bauhaus-btn bg-[#283D92] text-white py-2.5 text-xs font-mono font-bold uppercase tracking-widest disabled:opacity-40 cursor-pointer"
+            className="w-full bg-[#0F1E30] hover:bg-[#D94E28] text-white py-2.5 rounded-[2px] nolan-display text-[11px] font-semibold transition disabled:opacity-40 cursor-pointer"
           >
             {submitting ? 'VERIFYING…' : 'ENTER CANVAS →'}
           </button>

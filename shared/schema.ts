@@ -114,11 +114,11 @@ export const CARD_FINISHES: {
   border: string;
   shape: BauhausShape;
 }[] = [
-  { id: 'default', label: '包豪斯蓝', dot: '#283D92', border: '#161616', shape: 'circle' },
-  { id: 'warm', label: '陶粉', dot: '#DFB0AF', border: '#161616', shape: 'arch' },
-  { id: 'sage', label: '信号绿', dot: '#02CA0E', border: '#161616', shape: 'tri' },
-  { id: 'mist', label: '梅子紫', dot: '#6C4D6D', border: '#161616', shape: 'square' },
-  { id: 'ink', label: '建筑黑', dot: '#161616', border: '#161616', shape: 'diamond' },
+  { id: 'default', label: '北海蓝', dot: '#25548A', border: '#0F1E30', shape: 'circle' },
+  { id: 'warm', label: '救生橙', dot: '#D94E28', border: '#0F1E30', shape: 'arch' },
+  { id: 'sage', label: '海松绿', dot: '#2A7A68', border: '#0F1E30', shape: 'tri' },
+  { id: 'mist', label: '雾钢蓝', dot: '#60768C', border: '#0F1E30', shape: 'square' },
+  { id: 'ink', label: '深海墨', dot: '#0F1E30', border: '#0F1E30', shape: 'diamond' },
 ];
 
 export function parseCardLayout(raw?: string): CardLayout {
