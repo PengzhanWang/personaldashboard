@@ -496,6 +496,7 @@ function CanvasShell() {
         <BentoCanvas
           cards={boardCards}
           boards={sortedBoards}
+          items={items}
           viewMode={viewMode}
           onOpenWorkspace={(c) => {
             setCreatingDraft(null);
@@ -527,6 +528,7 @@ function CanvasShell() {
       {workspaceCard && (
         <ProjectWorkspace
           card={workspaceCard}
+          viewMode={viewMode}
           onClose={() => setWorkspaceCardId(null)}
           onOpenCardSettings={(c) => {
             setCreatingDraft(null);

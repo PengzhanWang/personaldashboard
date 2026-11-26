@@ -17,9 +17,11 @@ import { apiUnfurl } from '../lib/api';
 import { useStore } from '../lib/store';
 import { ulid } from '../lib/ulid';
 import { BatchAddModal, type AddModalTab, type NewItemDraft } from './BatchAddModal';
+import { MobileChecklist } from './MobileChecklist';
 
 interface ProjectWorkspaceProps {
   card: Row;
+  viewMode: 'desktop' | 'mobile';
   onClose: () => void;
   onOpenCardSettings: (card: Row) => void;
   onOpenLightbox: (src: string) => void;
@@ -45,6 +47,7 @@ function parseTags(raw?: string): string[] {
 
 export function ProjectWorkspace({
   card,
+  viewMode,
   onClose,
   onOpenCardSettings,
   onOpenLightbox,
@@ -93,9 +96,19 @@ export function ProjectWorkspace({
 
   const doneColumnId = columns.length >= 2 ? columns[columns.length - 1].id : null;
 
+  const [narrowScreen, setNarrowScreen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 640 : false,
+  );
+  useEffect(() => {
+    const onResize = () => setNarrowScreen(window.innerWidth < 640);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const isMobile = viewMode === 'mobile' || narrowScreen;
+
   // UI states
   const [typeFilter, setTypeFilter] = useState<ItemType | 'all'>('all');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() => !(viewMode === 'mobile' || (typeof window !== 'undefined' && window.innerWidth < 640)));
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [addModal, setAddModal] = useState<{ tab: AddModalTab; files?: File[] } | null>(null);
   const [fileDragOver, setFileDragOver] = useState(false);
@@ -347,6 +360,85 @@ export function ProjectWorkspace({
     });
     await mutateBatch(ops);
     showToast(drafts.length === 1 ? '条目已添加' : `已批量加入 ${drafts.length} 条内容`);
+  }
+
+  async function handleToggleDone(item: Row, currentlyDone: boolean) {
+    if (!doneColumnId || columns.length === 0) return;
+    if (!currentlyDone) {
+      const doneCountNow = cardItems.filter((it) => it.column_id === doneColumnId).length;
+      const originCol = columns.some((c) => c.id === item.column_id) ? item.column_id : columns[0].id;
+      await upsertRow(
+        'Items',
+        {
+          column_id: doneColumnId,
+          prev_column_id: originCol !== doneColumnId ? originCol : '',
+          sort: String(doneCountNow),
+        },
+        item,
+      );
+    } else {
+      const prevValid =
+        item.prev_column_id &&
+        item.prev_column_id !== doneColumnId &&
+        columns.some((c) => c.id === item.prev_column_id);
+      const restoreColId = prevValid ? item.prev_column_id : columns[0].id;
+      const restoreCount = cardItems.filter((it) => it.column_id === restoreColId).length;
+      await upsertRow(
+        'Items',
+        {
+          column_id: restoreColId,
+          sort: String(restoreCount),
+        },
+        item,
+      );
+    }
+  }
+
+  async function handleMobileQuickAdd(raw: string) {
+    const firstColId = columns[0]?.id;
+    if (!firstColId) return;
+    const isUrlOrPath = isHttpUrl(raw) || isLocalPath(raw);
+    const type: ItemType = isUrlOrPath ? detectItemType(raw) : 'task';
+    let title = raw;
+    if (isLocalPath(raw)) {
+      const parts = raw.replace(/\\/g, '/').split('/').filter(Boolean);
+      title = parts[parts.length - 1] || raw;
+    } else if (isHttpUrl(raw)) {
+      try {
+        const u = new URL(raw);
+        title = u.hostname.replace(/^www\./, '') + (u.pathname !== '/' ? u.pathname.slice(0, 28) : '');
+      } catch {
+        title = raw.slice(0, 48);
+      }
+    }
+    const colCount = cardItems.filter((it) => it.column_id === firstColId).length;
+    const newId = await upsertRow('Items', {
+      card_id: card.id,
+      column_id: firstColId,
+      prev_column_id: '',
+      sort: String(colCount),
+      type,
+      title,
+      url: isUrlOrPath ? raw : '',
+      tags: '',
+      note: '',
+      due: '',
+      body_md: '',
+    });
+    if (isHttpUrl(raw)) {
+      apiUnfurl([raw])
+        .then((res) => {
+          const first = res.results[0];
+          if (first && first.ok && first.title && first.title !== title) {
+            void upsertRow(
+              'Items',
+              { title: first.title, type: first.type },
+              { id: newId, version: '0', updated_at: '' } as Row,
+            );
+          }
+        })
+        .catch(() => undefined);
+    }
   }
 
   async function handleDropItem(itemId: string, targetColId: string, beforeItemId: string | null) {
@@ -615,10 +707,10 @@ export function ProjectWorkspace({
       </header>
 
       {/* Main Split Body */}
-      <div className="flex-1 flex min-h-0 overflow-hidden">
-        {/* Center Kanban Area */}
-        <div className="flex-1 min-w-0 overflow-x-auto overflow-y-hidden p-4 sm:p-6">
-          {needsTemplate ? (
+      <div className="flex-1 flex min-h-0 overflow-hidden relative">
+        {/* Center Area: Template Picker / Mobile Checklist / Desktop Kanban */}
+        {needsTemplate ? (
+          <div className="flex-1 min-w-0 overflow-y-auto p-4 sm:p-6">
             <div className="h-full flex flex-col items-center justify-center max-w-2xl mx-auto">
               <div className="text-center mb-6">
                 <p className="nolan-display text-[11px] font-bold text-[#D94E28]">INITIALIZE WORKSPACE</p>
@@ -664,7 +756,28 @@ export function ProjectWorkspace({
                 ))}
               </div>
             </div>
-          ) : (
+          </div>
+        ) : isMobile ? (
+          <MobileChecklist
+            columns={columns}
+            doneColumnId={doneColumnId}
+            items={filteredItems}
+            accentColor={motif.dot}
+            onToggleDone={handleToggleDone}
+            onQuickAdd={handleMobileQuickAdd}
+            onSelectItem={(it) => {
+              setSelectedItemId(it.id);
+              setSidebarOpen(true);
+            }}
+            onCopyPath={(p) => {
+              void navigator.clipboard.writeText(p).then(
+                () => showToast('已复制本地路径'),
+                () => showToast('复制失败，请手动复制'),
+              );
+            }}
+          />
+        ) : (
+          <div className="flex-1 min-w-0 overflow-x-auto overflow-y-hidden p-4 sm:p-6">
             <div className="h-full flex items-start gap-4">
               {columns.map((col, colIdx) => {
                 const colItems = itemsByColumn.get(col.id) || [];
@@ -965,18 +1078,27 @@ export function ProjectWorkspace({
                 )}
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Right Collapsible Sidebar: Project Notes <-> Item Detail */}
         {sidebarOpen && (
-          <aside className="w-full sm:w-[340px] lg:w-[380px] shrink-0 border-l border-[var(--hairline)] bg-white flex flex-col min-h-0">
+          <aside
+            className={
+              isMobile
+                ? 'absolute inset-0 z-20 bg-white flex flex-col min-h-0'
+                : 'w-[340px] lg:w-[380px] shrink-0 border-l border-[var(--hairline)] bg-white flex flex-col min-h-0'
+            }
+          >
             {selectedItem ? (
               <ItemDetailPanel
                 item={selectedItem}
                 columns={columns}
                 doneColumnId={doneColumnId}
-                onBackToNotes={() => setSelectedItemId(null)}
+                onBackToNotes={() => {
+                  setSelectedItemId(null);
+                  if (isMobile) setSidebarOpen(false);
+                }}
                 onSave={async (patch) => {
                   await upsertRow('Items', patch, selectedItem);
                   showToast('条目已保存');
@@ -984,6 +1106,7 @@ export function ProjectWorkspace({
                 onDelete={async () => {
                   await deleteRow('Items', selectedItem);
                   setSelectedItemId(null);
+                  if (isMobile) setSidebarOpen(false);
                   showToast('条目已删除');
                 }}
                 onCopyPath={(p) => {
@@ -995,20 +1118,31 @@ export function ProjectWorkspace({
               />
             ) : (
               <div className="flex-1 flex flex-col min-h-0">
-                <div className="px-4 py-3 border-b border-[var(--hairline)] flex items-center justify-between">
+                <div className="px-4 py-3 border-b border-[var(--hairline)] flex items-center justify-between gap-2">
                   <div>
                     <span className="nolan-label text-[10px] font-bold text-[#0F1E30]">PROJECT NOTES</span>
                     <p className="text-[11px] text-[var(--muted-foreground)]">原卡片文字与随手笔记</p>
                   </div>
-                  {notesDirty && (
-                    <button
-                      type="button"
-                      onClick={() => void saveProjectNotes()}
-                      className="bg-[#D94E28] text-white px-3 py-1 rounded-[2px] nolan-label text-[10px] font-semibold cursor-pointer"
-                    >
-                      保存
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {notesDirty && (
+                      <button
+                        type="button"
+                        onClick={() => void saveProjectNotes()}
+                        className="bg-[#D94E28] text-white px-3 py-1 rounded-[2px] nolan-label text-[10px] font-semibold cursor-pointer"
+                      >
+                        保存
+                      </button>
+                    )}
+                    {isMobile && (
+                      <button
+                        type="button"
+                        onClick={() => setSidebarOpen(false)}
+                        className="dunkirk-btn bg-white px-2.5 py-1 nolan-label text-[10px] font-semibold cursor-pointer"
+                      >
+                        返回
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto card-scroll p-4 space-y-4">

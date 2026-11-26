@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CARD_FINISHES,
+  COLUMN_TEMPLATES,
+  ITEM_TYPES,
   parseCardImages,
   parseCardLayout,
   parseCardLinks,
-  type BauhausShape,
   type CardFinish,
   type CardLayout,
   type LinkKind,
@@ -118,6 +119,7 @@ interface ContextMenuState {
 export function BentoCanvas({
   cards,
   boards,
+  items,
   viewMode,
   onOpenWorkspace,
   onEditCard,
@@ -131,6 +133,7 @@ export function BentoCanvas({
 }: {
   cards: Row[];
   boards: Row[];
+  items: Row[];
   viewMode: 'desktop' | 'mobile';
   onOpenWorkspace: (card: Row) => void;
   onEditCard: (card: Row) => void;
@@ -145,6 +148,25 @@ export function BentoCanvas({
   const stageRef = useRef<HTMLDivElement | null>(null);
   const placeholderRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef(new Map<string, HTMLDivElement>());
+
+  const itemsByCardId = useMemo(() => {
+    const map = new Map<string, Row[]>();
+    for (const it of items) {
+      if (!it.card_id) continue;
+      let list = map.get(it.card_id);
+      if (!list) {
+        list = [];
+        map.set(it.card_id, list);
+      }
+      list.push(it);
+    }
+    for (const list of map.values()) {
+      list.sort(
+        (a, b) => Number(a.sort || '0') - Number(b.sort || '0') || (a.created_at || '').localeCompare(b.created_at || ''),
+      );
+    }
+    return map;
+  }, [items]);
   const [stageWidth, setStageWidth] = useState(1040);
   const [quickInputs, setQuickInputs] = useState<Record<string, string>>({});
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -519,12 +541,44 @@ export function BentoCanvas({
             const isRevealed = Boolean(revealedIds[card.id]);
             const isLocked = isMasked && !isRevealed;
 
+            const cardItems = itemsByCardId.get(card.id) || [];
+            const hasWorkspaceItems = cardItems.length > 0;
+            const wsCols = layout.columns ?? (hasWorkspaceItems ? COLUMN_TEMPLATES[0].columns : []);
+            const doneColId = wsCols.length >= 2 ? wsCols[wsCols.length - 1].id : null;
+            const wsDoneCount = doneColId ? cardItems.filter((it) => it.column_id === doneColId).length : 0;
+            const wsPct = hasWorkspaceItems && doneColId ? Math.round((wsDoneCount / cardItems.length) * 100) : 0;
+
             let checkTotal = 0;
             let checkDone = 0;
-            for (const l of lines) {
-              if (/^\s*-\s*\[[ xX]\]/.test(l)) {
-                checkTotal++;
-                if (/^\s*-\s*\[[xX]\]/.test(l)) checkDone++;
+            if (!hasWorkspaceItems) {
+              for (const l of lines) {
+                if (/^\s*-\s*\[[ xX]\]/.test(l)) {
+                  checkTotal++;
+                  if (/^\s*-\s*\[[xX]\]/.test(l)) checkDone++;
+                }
+              }
+            }
+
+            // Type breakdown & next-up preview for Project Cover
+            const typeCounts: Record<string, number> = {};
+            let nextColName = '';
+            let nextItems: Row[] = [];
+            if (hasWorkspaceItems) {
+              for (const it of cardItems) {
+                const t = it.type || 'task';
+                typeCounts[t] = (typeCounts[t] || 0) + 1;
+              }
+              const colIdSet = new Set(wsCols.map((c) => c.id));
+              const activeCols = doneColId ? wsCols.filter((c) => c.id !== doneColId) : wsCols;
+              for (const col of activeCols) {
+                const matches = cardItems.filter(
+                  (it) => it.column_id === col.id || (!colIdSet.has(it.column_id) && col.id === wsCols[0]?.id),
+                );
+                if (matches.length > 0) {
+                  nextColName = col.name;
+                  nextItems = matches.slice(0, box.h >= 3 ? 3 : 2);
+                  break;
+                }
               }
             }
 
@@ -583,7 +637,12 @@ export function BentoCanvas({
                             {card.tag}
                           </span>
                         )}
-                        {checkTotal > 0 && !isLocked && (
+                        {hasWorkspaceItems && !isLocked && (
+                          <span className="font-mono text-[10px] muted-text text-[var(--muted-foreground)]">
+                            {doneColId ? `${wsDoneCount}/${cardItems.length}` : `${cardItems.length} 项`}
+                          </span>
+                        )}
+                        {!hasWorkspaceItems && checkTotal > 0 && !isLocked && (
                           <span className="font-mono text-[10px] muted-text text-[var(--muted-foreground)]">
                             {checkDone}/{checkTotal}
                           </span>
@@ -688,6 +747,92 @@ export function BentoCanvas({
                       <span className="text-[10px] muted-text text-[var(--muted-foreground)] opacity-75">
                         显示 30 秒或切页后自动重新隐藏
                       </span>
+                    </div>
+                  ) : hasWorkspaceItems ? (
+                    <div className="px-4 py-3 flex-1 flex flex-col justify-between gap-2.5 overflow-hidden select-none">
+                      <div className="space-y-2.5 min-h-0">
+                        {/* Progress bar */}
+                        {doneColId && (
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-[10px] font-mono">
+                              <span className="nolan-label text-[9px] muted-text text-[var(--muted-foreground)]">
+                                PROGRESS
+                              </span>
+                              <span className="font-semibold">
+                                {wsDoneCount}/{cardItems.length} · {wsPct}%
+                              </span>
+                            </div>
+                            <div
+                              className={`h-1.5 w-full rounded-[1px] overflow-hidden ${
+                                isInk ? 'bg-white/15' : 'bg-[#0F1E30]/10'
+                              }`}
+                            >
+                              <div
+                                className="h-full transition-all duration-300"
+                                style={{
+                                  width: `${wsPct}%`,
+                                  background: wsPct === 100 ? '#2A7A68' : isInk ? '#D94E28' : motif.dot,
+                                }}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Resource Type Pills */}
+                        <div className="flex flex-wrap gap-1">
+                          {ITEM_TYPES.map((t) => {
+                            const cnt = typeCounts[t.id] || 0;
+                            if (!cnt) return null;
+                            return (
+                              <span
+                                key={t.id}
+                                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[2px] border text-[10px] font-medium ${
+                                  isInk
+                                    ? 'border-white/20 bg-white/10 text-white'
+                                    : 'border-[var(--hairline)] bg-[#ECF0F4]/70 text-[#0F1E30]'
+                                }`}
+                              >
+                                <span
+                                  className="w-1.5 h-1.5 shrink-0"
+                                  style={{ background: isInk ? '#D94E28' : t.color }}
+                                />
+                                <span>{t.label}</span>
+                                <span className="font-mono opacity-75">{cnt}</span>
+                              </span>
+                            );
+                          })}
+                        </div>
+
+                        {/* Next-up Preview */}
+                        {nextItems.length > 0 ? (
+                          <div className="space-y-1 pt-0.5">
+                            <div className="nolan-label text-[8.5px] font-semibold muted-text text-[var(--muted-foreground)]">
+                              NEXT · {nextColName}
+                            </div>
+                            {nextItems.map((ni) => {
+                              const tMeta = ITEM_TYPES.find((t) => t.id === ni.type) || ITEM_TYPES[0];
+                              return (
+                                <div key={ni.id} className="flex items-center gap-1.5 text-[11.5px] leading-snug">
+                                  <span
+                                    className="w-1 h-1 shrink-0"
+                                    style={{ background: isInk ? '#ECF0F4' : tMeta.color }}
+                                  />
+                                  <span className="truncate">{ni.title || '未命名条目'}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="text-[11px] font-semibold text-[#2A7A68] pt-0.5">
+                            全部完成 ✓
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1 border-t border-[var(--hairline)] card-divider text-[9.5px] nolan-label muted-text text-[var(--muted-foreground)]">
+                        <span>WORKSPACE</span>
+                        <span>点击展开 ↗</span>
+                      </div>
                     </div>
                   ) : (
                     <div className="px-4 py-3 flex-1 flex flex-col gap-1 overflow-y-auto card-scroll">

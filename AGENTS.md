@@ -35,17 +35,11 @@
 - [x] 账号密码卡片隐藏遮罩（`layout_json.masked`，30 秒及切页自动重隐藏，单行 `COPY` 只复制冒号后的值）
 - [x] **项目工作台 · 第 1 阶段**：`Items` 表（`schema.ts` / `gas/Code.gs` / `worker` / `store.tsx`）+ 全屏工作台 `src/components/ProjectWorkspace.tsx`（4 套列模板、列重命名/增删/排序、看板拖拽、条目 CRUD、右侧项目笔记 ⇄ 条目详情栏）
 - [x] **项目工作台 · 第 2 阶段**：Worker `POST /api/unfurl` 网页标题抓取 + `src/components/BatchAddModal.tsx`（批量粘贴链接并抓标题预览、拖入本地文件并记住按项目的本地文件夹前缀、单条添加）+ 工作台全局文件拖拽 + 列底部快加静默抓标题
+- [x] **项目工作台 · 第 3 阶段**：画布卡片封面（`src/components/BentoCanvas.tsx`：进度条、资源类型胶囊、下一条待办预览）+ 手机端勾选清单（`src/components/MobileChecklist.tsx`：按列分组竖向清单、勾选移入完成并记住 `prev_column_id`、已完成组默认折叠、点标题开链接/复制路径、顶部快加）
 
-## 5. 下一步待办（第 3 阶段）
-详细设计见 `docs/PROJECT_WORKSPACE_SPEC.md`：
-1. **画布卡片封面（`src/components/BentoCanvas.tsx`）**：
-   - 当卡片存在 `Items` 条目时，画布上改为展示「项目封面」：进度条（完成数/总数）、各资源类型数量胶囊、第一列的下一条待办/待学预览；点击卡片直接进入全屏工作台。
-   - 无条目的卡片保持原样展示文字/清单/图片。
-2. **手机端勾选清单（`src/components/MobileChecklist.tsx` 或集成在 `ProjectWorkspace.tsx`）**：
-   - 窄屏（`< 640px`）或手机预览模式下，全屏工作台不显示横向看板，改为按列分组的竖向清单。
-   - 每条左侧有勾选框：勾选即移入最后一列（完成列）并把原列记入 `prev_column_id`；取消勾选自动回到 `prev_column_id`（无记录则回第一列）。
-   - 已完成组默认折叠；点击标题直接打开链接；支持顶部粘贴链接快速添加；不支持拖拽。
-3. **后续可选方向**：如果用户之后希望进一步将运行数据也迁到本地（如本地 Node 服务 + SQLite，点击本地文件直接用系统默认程序打开），数据结构已按本地优先设计，可直接复用 `shared/schema.ts` 和全部前端组件。
+## 5. 后续可选方向
+- 如果后续希望将运行数据也迁到本地（如本地 Node 服务 + SQLite，点击本地文件直接用系统默认程序打开），数据结构已按本地优先设计，可直接复用 `shared/schema.ts` 和全部前端组件。
+- 可选增强：账号密码类卡片的客户端 AES-GCM 加密。
 
 ## 6. 常用命令
 ```bash
