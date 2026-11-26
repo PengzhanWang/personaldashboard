@@ -2,6 +2,7 @@ import type {
   MutateResponse,
   Mutation,
   SnapshotResponse,
+  UnfurlResponse,
   UploadImageRequest,
   UploadImageResponse,
 } from '../../shared/schema';
@@ -80,4 +81,13 @@ export async function apiUploadImage(req: UploadImageRequest): Promise<UploadIma
     body: JSON.stringify(req),
   });
   return parseJson<UploadImageResponse>(res);
+}
+
+export async function apiUnfurl(urls: string[]): Promise<UnfurlResponse> {
+  const res = await fetch('/api/unfurl', {
+    method: 'POST',
+    headers: HEADERS,
+    body: JSON.stringify({ urls }),
+  });
+  return parseJson<UnfurlResponse>(res);
 }

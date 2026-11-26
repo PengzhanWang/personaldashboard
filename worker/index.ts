@@ -11,10 +11,14 @@ import {
 } from './auth';
 import { getBackend } from './backend';
 import {
+  detectItemType,
   parseCardImages,
+  type ItemType,
   type Mutation,
   type Snapshot,
   type SnapshotResponse,
+  type UnfurlResponse,
+  type UnfurlResult,
   type UploadImageRequest,
   type UploadImageResponse,
 } from '../shared/schema';
@@ -105,6 +109,17 @@ async function handleApi(req: Request, url: URL, env: Env, ctx: ExecutionContext
     const fileId = decodeURIComponent(path.slice('/api/image/'.length)).trim();
     if (!fileId || fileId.includes('/')) return json({ error: 'invalid file id' }, { status: 400 });
     return handleGetImage(url, fileId, env, ctx, session);
+  }
+
+  if (path === '/api/unfurl' && req.method === 'POST') {
+    const body = (await req.json().catch(() => ({}))) as { urls?: unknown };
+    const rawList = Array.isArray(body.urls) ? body.urls : [];
+    const urls = rawList
+      .map((u) => (typeof u === 'string' ? u.trim() : ''))
+      .filter(Boolean)
+      .slice(0, 20);
+    const results = await Promise.all(urls.map((u) => unfurlOne(u)));
+    return json({ results } satisfies UnfurlResponse);
   }
 
   return json({ error: 'not found' }, { status: 404 });
@@ -234,4 +249,147 @@ function filterForDevice(snap: Snapshot, dev: Device): Snapshot {
       Items: items.filter((it) => visibleCardIds.has(it.card_id)),
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Link Unfurling (/api/unfurl) — bounded size & timeout, SSRF guarded
+// ---------------------------------------------------------------------------
+function isBlockedHost(hostname: string): boolean {
+  const h = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (!h || h === 'localhost' || h === '::1' || h === '0.0.0.0') return true;
+  if (h.endsWith('.local') || h.endsWith('.internal') || h.endsWith('.localhost')) return true;
+  if (/^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h) || /^169\.254\./.test(h)) return true;
+  const m172 = h.match(/^172\.(\d+)\./);
+  if (m172 && Number(m172[1]) >= 16 && Number(m172[1]) <= 31) return true;
+  return false;
+}
+
+function fallbackTitleFromUrl(rawUrl: string): string {
+  try {
+    const u = new URL(rawUrl);
+    const host = u.hostname.replace(/^www\./, '');
+    const path = decodeURIComponent(u.pathname).replace(/\/+$/, '');
+    return path && path !== '/' ? `${host}${path.slice(0, 42)}` : host;
+  } catch {
+    return rawUrl.slice(0, 64);
+  }
+}
+
+function decodeHtmlEntities(input: string): string {
+  return input
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+      const code = parseInt(hex, 16);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : '';
+    })
+    .replace(/&#(\d+);/g, (_, dec) => {
+      const code = parseInt(dec, 10);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : '';
+    })
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractHtmlTitle(html: string): string | null {
+  const headEnd = html.search(/<\/head>/i);
+  const snippet = headEnd !== -1 ? html.slice(0, headEnd + 7) : html.slice(0, 32_000);
+
+  const metaPatterns = [
+    /<meta[^>]+(?:property|name)\s*=\s*["'](?:og:title|twitter:title)["'][^>]+content\s*=\s*["']([^"']+)["'][^>]*>/i,
+    /<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]+(?:property|name)\s*=\s*["'](?:og:title|twitter:title)["'][^>]*>/i,
+  ];
+  for (const re of metaPatterns) {
+    const m = snippet.match(re);
+    if (m && m[1]) {
+      const cleaned = decodeHtmlEntities(m[1]).slice(0, 140);
+      if (cleaned) return cleaned;
+    }
+  }
+
+  const titleMatch = snippet.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  if (titleMatch && titleMatch[1]) {
+    const cleaned = decodeHtmlEntities(titleMatch[1]).slice(0, 140);
+    if (cleaned) return cleaned;
+  }
+  return null;
+}
+
+async function readBoundedText(res: Response, maxBytes = 96 * 1024): Promise<string> {
+  if (!res.body) return '';
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (total < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done || !value) break;
+      chunks.push(value);
+      total += value.byteLength;
+    }
+  } finally {
+    reader.cancel().catch(() => undefined);
+  }
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    merged.set(c, offset);
+    offset += c.byteLength;
+  }
+  return new TextDecoder('utf-8').decode(merged);
+}
+
+async function unfurlOne(rawUrl: string): Promise<UnfurlResult> {
+  const fallbackType = detectItemType(rawUrl);
+  const fallbackTitle = fallbackTitleFromUrl(rawUrl);
+
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return { url: rawUrl, title: fallbackTitle, type: fallbackType, ok: false };
+  }
+
+  if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || isBlockedHost(parsed.hostname)) {
+    return { url: rawUrl, title: fallbackTitle, type: fallbackType, ok: false };
+  }
+
+  try {
+    const res = await fetch(parsed.toString(), {
+      method: 'GET',
+      redirect: 'follow',
+      signal: AbortSignal.timeout(4500),
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; LifeOSDashboard/1.0)',
+        Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.5',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      },
+    });
+
+    if (!res.ok) {
+      return { url: rawUrl, title: fallbackTitle, type: fallbackType, ok: false };
+    }
+
+    const ct = (res.headers.get('content-type') || '').toLowerCase();
+    let refinedType: ItemType = fallbackType;
+    if (ct.includes('application/pdf')) refinedType = 'doc';
+    else if (ct.startsWith('video/')) refinedType = 'video';
+    else if (ct.startsWith('audio/')) refinedType = 'audio';
+    else if (ct.startsWith('image/')) refinedType = 'image';
+
+    if (!ct.includes('text/html') && !ct.includes('application/xhtml')) {
+      res.body?.cancel().catch(() => undefined);
+      return { url: rawUrl, title: fallbackTitle, type: refinedType, ok: true };
+    }
+
+    const html = await readBoundedText(res);
+    const title = extractHtmlTitle(html) || fallbackTitle;
+    return { url: rawUrl, title, type: refinedType, ok: true };
+  } catch {
+    return { url: rawUrl, title: fallbackTitle, type: fallbackType, ok: false };
+  }
 }

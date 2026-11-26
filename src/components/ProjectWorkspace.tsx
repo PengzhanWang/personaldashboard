@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CARD_FINISHES,
   COLUMN_TEMPLATES,
@@ -13,8 +13,10 @@ import {
   type Row,
   type WorkspaceColumn,
 } from '../../shared/schema';
+import { apiUnfurl } from '../lib/api';
 import { useStore } from '../lib/store';
 import { ulid } from '../lib/ulid';
+import { BatchAddModal, type AddModalTab, type NewItemDraft } from './BatchAddModal';
 
 interface ProjectWorkspaceProps {
   card: Row;
@@ -95,7 +97,8 @@ export function ProjectWorkspace({
   const [typeFilter, setTypeFilter] = useState<ItemType | 'all'>('all');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [addModal, setAddModal] = useState<{ tab: AddModalTab; files?: File[] } | null>(null);
+  const [fileDragOver, setFileDragOver] = useState(false);
 
   // Inline column quick-add inputs
   const [colQuickInputs, setColQuickInputs] = useState<Record<string, string>>({});
@@ -132,8 +135,8 @@ export function ProjectWorkspace({
         (document.activeElement as HTMLElement).blur();
         return;
       }
-      if (addModalOpen) {
-        setAddModalOpen(false);
+      if (addModal) {
+        setAddModal(null);
       } else if (selectedItemId) {
         setSelectedItemId(null);
       } else {
@@ -142,7 +145,7 @@ export function ProjectWorkspace({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [addModalOpen, selectedItemId, onClose]);
+  }, [addModal, selectedItemId, onClose]);
 
   // Progress stats
   const totalCount = cardItems.length;
@@ -281,7 +284,7 @@ export function ProjectWorkspace({
     }
 
     const colCount = cardItems.filter((it) => it.column_id === colId).length;
-    await upsertRow('Items', {
+    const newId = await upsertRow('Items', {
       card_id: card.id,
       column_id: colId,
       prev_column_id: '',
@@ -294,6 +297,56 @@ export function ProjectWorkspace({
       due: '',
       body_md: '',
     });
+
+    // Silently fetch real page title in background when a URL is pasted into quick-add
+    if (isHttpUrl(raw)) {
+      apiUnfurl([raw])
+        .then((res) => {
+          const first = res.results[0];
+          if (first && first.ok && first.title && first.title !== title) {
+            void upsertRow(
+              'Items',
+              { title: first.title, type: first.type },
+              { id: newId, version: '0', updated_at: '' } as Row,
+            );
+          }
+        })
+        .catch(() => undefined);
+    }
+  }
+
+  async function handleBatchAddItems(drafts: NewItemDraft[]) {
+    if (!drafts.length) return;
+    const colCounts = new Map<string, number>();
+    for (const it of cardItems) {
+      colCounts.set(it.column_id, (colCounts.get(it.column_id) || 0) + 1);
+    }
+    const fallbackColId = columns[0]?.id || '';
+    const ops = drafts.map((d) => {
+      const targetCol = d.column_id || fallbackColId;
+      const sortIdx = colCounts.get(targetCol) || 0;
+      colCounts.set(targetCol, sortIdx + 1);
+      return {
+        table: 'Items' as const,
+        op: 'upsert' as const,
+        rowId: ulid(),
+        patch: {
+          card_id: card.id,
+          column_id: targetCol,
+          prev_column_id: '',
+          sort: String(sortIdx),
+          type: d.type,
+          title: d.title,
+          url: d.url,
+          tags: d.tags,
+          note: d.note,
+          due: d.due,
+          body_md: '',
+        },
+      };
+    });
+    await mutateBatch(ops);
+    showToast(drafts.length === 1 ? '条目已添加' : `已批量加入 ${drafts.length} 条内容`);
   }
 
   async function handleDropItem(itemId: string, targetColId: string, beforeItemId: string | null) {
@@ -401,9 +454,49 @@ export function ProjectWorkspace({
   }
 
   return (
-    <div className="fixed inset-0 z-50 canvas-dunkirk flex flex-col overflow-hidden">
+    <div
+      onDragOver={(e) => {
+        if (!needsTemplate && !draggingId && e.dataTransfer.types.includes('Files')) {
+          e.preventDefault();
+          if (!fileDragOver) setFileDragOver(true);
+        }
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget === e.target) setFileDragOver(false);
+      }}
+      onDrop={(e) => {
+        if (!needsTemplate && !draggingId && e.dataTransfer.files?.length) {
+          e.preventDefault();
+          setFileDragOver(false);
+          setAddModal({ tab: 'files', files: Array.from(e.dataTransfer.files) });
+        }
+      }}
+      className="fixed inset-0 z-50 canvas-dunkirk flex flex-col overflow-hidden"
+    >
       {/* Top accent bar */}
       <div className="h-[3px] w-full shrink-0" style={{ background: motif.dot }} />
+
+      {/* OS File Drop Overlay */}
+      {fileDragOver && (
+        <div
+          onDragOver={(e) => e.preventDefault()}
+          onDragLeave={() => setFileDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setFileDragOver(false);
+            if (e.dataTransfer.files?.length) {
+              setAddModal({ tab: 'files', files: Array.from(e.dataTransfer.files) });
+            }
+          }}
+          className="fixed inset-0 z-[55] bg-[#0F1E30]/60 backdrop-blur-xs flex items-center justify-center p-6"
+        >
+          <div className="w-full max-w-md bg-white border-2 border-dashed border-[#D94E28] rounded-[3px] p-10 text-center space-y-2 shadow-2xl pointer-events-none">
+            <p className="nolan-display text-xs font-bold text-[#D94E28]">DROP LOCAL FILES</p>
+            <p className="nolan-title text-base font-bold text-[#0F1E30]">松开以添加本地文件引用</p>
+            <p className="text-xs text-[var(--muted-foreground)]">自动识别文件名与类型，仅记录路径，不上传原文件</p>
+          </div>
+        </div>
+      )}
 
       {/* Top Header */}
       <header className="border-b border-[var(--hairline)] bg-[#ECF0F4]/95 backdrop-blur-xl shrink-0">
@@ -452,11 +545,11 @@ export function ProjectWorkspace({
             {!needsTemplate && (
               <button
                 type="button"
-                onClick={() => setAddModalOpen(true)}
+                onClick={() => setAddModal({ tab: 'links' })}
                 className="bg-[#0F1E30] hover:bg-[#D94E28] text-white px-3 py-1.5 rounded-[2px] nolan-label text-[10px] font-semibold cursor-pointer transition flex items-center gap-1"
               >
                 <span>+</span>
-                <span>添加条目</span>
+                <span>添加</span>
               </button>
             )}
 
@@ -983,31 +1076,16 @@ export function ProjectWorkspace({
         )}
       </div>
 
-      {/* Add Item Modal */}
-      {addModalOpen && (
-        <AddItemModal
+      {/* Batch / File / Single Add Modal */}
+      {addModal && (
+        <BatchAddModal
+          cardId={card.id}
           columns={columns}
           defaultColumnId={columns[0]?.id || ''}
-          onCreate={async (fields) => {
-            const targetColId = fields.column_id || columns[0]?.id || '';
-            const countInCol = cardItems.filter((it) => it.column_id === targetColId).length;
-            await upsertRow('Items', {
-              card_id: card.id,
-              column_id: targetColId,
-              prev_column_id: '',
-              sort: String(countInCol),
-              type: fields.type,
-              title: fields.title,
-              url: fields.url,
-              tags: fields.tags,
-              note: fields.note,
-              due: fields.due,
-              body_md: '',
-            });
-            setAddModalOpen(false);
-            showToast('条目已添加');
-          }}
-          onClose={() => setAddModalOpen(false)}
+          initialTab={addModal.tab}
+          initialFiles={addModal.files}
+          onAddItems={handleBatchAddItems}
+          onClose={() => setAddModal(null)}
         />
       )}
     </div>
@@ -1270,217 +1348,6 @@ function ItemDetailPanel({
           />
         </div>
       </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Add Item Modal
-// ---------------------------------------------------------------------------
-function AddItemModal({
-  columns,
-  defaultColumnId,
-  onCreate,
-  onClose,
-}: {
-  columns: WorkspaceColumn[];
-  defaultColumnId: string;
-  onCreate: (fields: {
-    title: string;
-    type: ItemType;
-    column_id: string;
-    url: string;
-    tags: string;
-    note: string;
-    due: string;
-  }) => Promise<void>;
-  onClose: () => void;
-}) {
-  const [title, setTitle] = useState('');
-  const [url, setUrl] = useState('');
-  const [type, setType] = useState<ItemType>('task');
-  const [typeTouched, setTypeTouched] = useState(false);
-  const [columnId, setColumnId] = useState(defaultColumnId);
-  const [tags, setTags] = useState('');
-  const [due, setDue] = useState('');
-  const [note, setNote] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const titleRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    titleRef.current?.focus();
-  }, []);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const finalTitle = title.trim() || url.trim();
-    if (!finalTitle) return;
-    setSubmitting(true);
-    try {
-      await onCreate({
-        title: finalTitle,
-        type,
-        column_id: columnId,
-        url: url.trim(),
-        tags: tags.trim(),
-        note: note.trim(),
-        due: due.trim(),
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div
-      onClick={onClose}
-      className="fixed inset-0 z-[60] bg-[#0F1E30]/50 backdrop-blur-xs flex items-center justify-center p-4"
-    >
-      <form
-        onSubmit={(e) => void handleSubmit(e)}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md bg-white border border-[var(--hairline-strong)] rounded-[3px] shadow-[0_24px_56px_-18px_rgba(15,30,48,0.3)] p-5 space-y-3.5"
-      >
-        <div className="flex items-center justify-between border-b border-[var(--hairline)] pb-2.5">
-          <h3 className="nolan-title text-sm font-bold text-[#0F1E30]">添加条目</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-sm text-[var(--muted-foreground)] hover:text-[#0F1E30] cursor-pointer"
-          >
-            ×
-          </button>
-        </div>
-
-        <div>
-          <label className="nolan-label text-[9.5px] font-semibold text-[var(--muted-foreground)] block mb-1">
-            标题 *
-          </label>
-          <input
-            ref={titleRef}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="任务名、课程名、文章或文件名"
-            className="w-full px-2.5 py-1.5 text-sm border border-[var(--hairline-strong)] focus:border-[#0F1E30] rounded-[2px] outline-none"
-          />
-        </div>
-
-        <div>
-          <label className="nolan-label text-[9.5px] font-semibold text-[var(--muted-foreground)] block mb-1">
-            链接或本地路径（可选，自动识别类型）
-          </label>
-          <input
-            value={url}
-            onChange={(e) => {
-              const v = e.target.value;
-              setUrl(v);
-              if (!typeTouched) setType(detectItemType(v));
-            }}
-            placeholder="https://... 或 /Users/... / D:\..."
-            className="w-full px-2.5 py-1.5 text-xs font-mono border border-[var(--hairline-strong)] focus:border-[#0F1E30] rounded-[2px] outline-none"
-          />
-        </div>
-
-        <div>
-          <label className="nolan-label text-[9.5px] font-semibold text-[var(--muted-foreground)] block mb-1">
-            类型
-          </label>
-          <div className="flex flex-wrap gap-1">
-            {ITEM_TYPES.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => {
-                  setType(t.id);
-                  setTypeTouched(true);
-                }}
-                className={`px-2 py-1 rounded-[2px] border text-[10.5px] font-semibold cursor-pointer transition inline-flex items-center gap-1 ${
-                  type === t.id
-                    ? 'bg-[#0F1E30] border-[#0F1E30] text-white'
-                    : 'bg-white border-[var(--hairline)] text-[#0F1E30] hover:border-[var(--hairline-strong)]'
-                }`}
-              >
-                <span className="w-1.5 h-1.5" style={{ background: type === t.id ? '#fff' : t.color }} />
-                {t.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2.5">
-          {columns.length > 0 && (
-            <div>
-              <label className="nolan-label text-[9.5px] font-semibold text-[var(--muted-foreground)] block mb-1">
-                放入列
-              </label>
-              <select
-                value={columnId}
-                onChange={(e) => setColumnId(e.target.value)}
-                className="w-full px-2 py-1.5 text-xs bg-white border border-[var(--hairline-strong)] rounded-[2px] outline-none"
-              >
-                {columns.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          <div>
-            <label className="nolan-label text-[9.5px] font-semibold text-[var(--muted-foreground)] block mb-1">
-              截止日期（可选）
-            </label>
-            <input
-              type="date"
-              value={due}
-              onChange={(e) => setDue(e.target.value)}
-              className="w-full px-2 py-1.5 text-xs bg-white border border-[var(--hairline-strong)] rounded-[2px] outline-none font-mono"
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2.5">
-          <div>
-            <label className="nolan-label text-[9.5px] font-semibold text-[var(--muted-foreground)] block mb-1">
-              标签（逗号分隔）
-            </label>
-            <input
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-              placeholder="如：基础, 必看"
-              className="w-full px-2.5 py-1.5 text-xs border border-[var(--hairline-strong)] rounded-[2px] outline-none"
-            />
-          </div>
-          <div>
-            <label className="nolan-label text-[9.5px] font-semibold text-[var(--muted-foreground)] block mb-1">
-              简短备注
-            </label>
-            <input
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="一句话说明"
-              className="w-full px-2.5 py-1.5 text-xs border border-[var(--hairline-strong)] rounded-[2px] outline-none"
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--hairline)]">
-          <button
-            type="button"
-            onClick={onClose}
-            className="dunkirk-btn bg-white px-3.5 py-1.5 nolan-label text-[10px] font-semibold cursor-pointer"
-          >
-            取消
-          </button>
-          <button
-            type="submit"
-            disabled={submitting || (!title.trim() && !url.trim())}
-            className="bg-[#0F1E30] hover:bg-[#D94E28] text-white px-4 py-1.5 rounded-[2px] nolan-label text-[10px] font-semibold cursor-pointer transition disabled:opacity-40"
-          >
-            {submitting ? '添加中…' : '添加'}
-          </button>
-        </div>
-      </form>
     </div>
   );
 }

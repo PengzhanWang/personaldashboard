@@ -91,6 +91,17 @@ export interface UploadImageResponse {
   url: string;
 }
 
+export interface UnfurlResult {
+  url: string;
+  title: string;
+  type: ItemType;
+  ok: boolean;
+}
+
+export interface UnfurlResponse {
+  results: UnfurlResult[];
+}
+
 // ---- Card JSON payload types ----
 
 export type CardFinish = 'default' | 'warm' | 'sage' | 'mist' | 'ink';
