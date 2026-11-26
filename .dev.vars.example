@@ -1,6 +1,13 @@
-# Copy to .dev.vars for local `wrangler dev` testing (never commit .dev.vars).
-APP_PASSWORD=dev-password-change-me
-SESSION_SECRET=local-dev-session-secret-32-chars-min
-# Leave GAS_URL empty to use the local KV mock backend.
-GAS_URL=
-GAS_HMAC_SECRET=
+# 本地 `npm run preview` (wrangler dev) 环境变量模板
+# 复制本文件为 .dev.vars 后使用（.dev.vars 已加入 .gitignore，不会被提交）
+
+# 本地测试登录密码（随意填写）
+APP_PASSWORD=dev1234
+
+# 本地 Session 签名密钥（随意填一段 32 位以上随机字符）
+SESSION_SECRET=local-dev-session-secret-change-me-1234567890
+
+# 不填 GAS_URL 时，本地会自动使用 KV MockBackend，不会影响线上 Google Sheets 数据
+# 如需直连真实 Google Sheets，取消下面两行注释并填入对应值：
+# GAS_URL=https://script.google.com/macros/s/YOUR_DEPLOY_ID/exec
+# GAS_HMAC_SECRET=your_hmac_secret
