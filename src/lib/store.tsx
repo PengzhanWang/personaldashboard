@@ -39,6 +39,7 @@ interface StoreValue {
   backendKind: 'gas' | 'mock' | null;
   boards: Row[];
   cards: Row[];
+  items: Row[];
   syncState: SyncState;
   lastSyncedAt: number | null;
   pendingCount: number;
@@ -59,13 +60,18 @@ interface StoreValue {
 
 const StoreContext = createContext<StoreValue | null>(null);
 
-const EMPTY_SNAPSHOT: Snapshot = { generated_at: 0, tables: { Boards: [], Cards: [] } };
+const EMPTY_SNAPSHOT: Snapshot = { generated_at: 0, tables: { Boards: [], Cards: [], Items: [] } };
 
 function applyOutboxToSnapshot(base: Snapshot, outbox: Mutation[]): Snapshot {
-  if (!outbox.length) return base;
+  const baseItems = base.tables.Items || [];
+  if (!outbox.length) {
+    if (base.tables.Items) return base;
+    return { generated_at: base.generated_at, tables: { ...base.tables, Items: [] } };
+  }
   const tables: Record<TableName, Row[]> = {
     Boards: base.tables.Boards.map((r) => ({ ...r })),
     Cards: base.tables.Cards.map((r) => ({ ...r })),
+    Items: baseItems.map((r) => ({ ...r })),
   };
   for (const m of outbox) {
     const list = tables[m.table];
@@ -123,7 +129,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const mergeServerRow = useCallback((table: TableName, row: Row | undefined, deletedId?: string) => {
     setBaseSnapshot((prev) => {
-      const nextList = prev.tables[table].slice();
+      const nextList = (prev.tables[table] || []).slice();
       if (deletedId) {
         const i = nextList.findIndex((r) => r.id === deletedId);
         if (i !== -1) nextList.splice(i, 1);
@@ -487,6 +493,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       backendKind,
       boards: effective.tables.Boards,
       cards: effective.tables.Cards,
+      items: effective.tables.Items || [],
       syncState,
       lastSyncedAt,
       pendingCount: outbox.length,

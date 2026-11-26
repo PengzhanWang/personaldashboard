@@ -206,9 +206,10 @@ async function refreshWithLock(env: Env): Promise<void> {
 async function refreshSnapshot(env: Env): Promise<Snapshot> {
   const snap = await getBackend(env).snapshot();
   // Ensure schema shapes even before the user re-runs setupSheets
-  snap.tables ||= { Boards: [], Cards: [] };
+  snap.tables ||= { Boards: [], Cards: [], Items: [] };
   snap.tables.Boards ||= [];
   snap.tables.Cards ||= [];
+  snap.tables.Items ||= [];
   const current = await env.KV.getWithMetadata<{ generated_at: number }>(SNAPSHOT_KEY, 'text');
   if (!current.metadata || current.metadata.generated_at < snap.generated_at) {
     await env.KV.put(SNAPSHOT_KEY, JSON.stringify(snap), { metadata: { generated_at: snap.generated_at } });
@@ -218,13 +219,19 @@ async function refreshSnapshot(env: Env): Promise<Snapshot> {
 
 /** Work computers never receive sensitive boards or cards. */
 function filterForDevice(snap: Snapshot, dev: Device): Snapshot {
-  if (dev !== 'work') return snap;
+  const items = snap.tables.Items || [];
+  if (dev !== 'work') {
+    return { ...snap, tables: { ...snap.tables, Items: items } };
+  }
   const hiddenBoards = new Set(snap.tables.Boards.filter((b) => b.sensitive === 'TRUE').map((b) => b.id));
+  const visibleCards = snap.tables.Cards.filter((c) => c.sensitive !== 'TRUE' && !hiddenBoards.has(c.board_id));
+  const visibleCardIds = new Set(visibleCards.map((c) => c.id));
   return {
     ...snap,
     tables: {
       Boards: snap.tables.Boards.filter((b) => !hiddenBoards.has(b.id)),
-      Cards: snap.tables.Cards.filter((c) => c.sensitive !== 'TRUE' && !hiddenBoards.has(c.board_id)),
+      Cards: visibleCards,
+      Items: items.filter((it) => visibleCardIds.has(it.card_id)),
     },
   };
 }

@@ -5,7 +5,7 @@
  * All values are transported as strings (Sheets stores them as plain text).
  */
 
-export type TableName = 'Boards' | 'Cards';
+export type TableName = 'Boards' | 'Cards' | 'Items';
 
 export const SYSTEM_COLUMNS = ['id', 'created_at', 'updated_at', 'updated_by', 'version', 'deleted'] as const;
 
@@ -22,6 +22,20 @@ export const TABLE_COLUMNS: Record<TableName, readonly string[]> = {
     'images_json',
     'links_json',
     'sensitive',
+  ],
+  Items: [
+    ...SYSTEM_COLUMNS,
+    'card_id',
+    'column_id',
+    'prev_column_id',
+    'sort',
+    'type',
+    'title',
+    'url',
+    'tags',
+    'note',
+    'due',
+    'body_md',
   ],
 };
 
@@ -81,6 +95,11 @@ export interface UploadImageResponse {
 
 export type CardFinish = 'default' | 'warm' | 'sage' | 'mist' | 'ink';
 
+export interface WorkspaceColumn {
+  id: string;
+  name: string;
+}
+
 export interface CardLayout {
   x: number;
   y: number;
@@ -88,7 +107,72 @@ export interface CardLayout {
   h: number;
   /** When true, card body is hidden on canvas until explicitly revealed (for accounts/passwords). */
   masked?: boolean;
+  /** Kanban columns for the full-screen project workspace. The last column counts as "done" when >= 2 columns. */
+  columns?: WorkspaceColumn[];
 }
+
+export type ItemType = 'task' | 'link' | 'video' | 'audio' | 'doc' | 'file' | 'image';
+
+export const ITEM_TYPES: {
+  id: ItemType;
+  label: string;
+  short: string;
+  color: string;
+}[] = [
+  { id: 'task', label: '任务', short: 'TASK', color: '#0F1E30' },
+  { id: 'link', label: '链接', short: 'LINK', color: '#25548A' },
+  { id: 'video', label: '视频', short: 'VIDEO', color: '#D94E28' },
+  { id: 'audio', label: '音频', short: 'AUDIO', color: '#7C4D8B' },
+  { id: 'doc', label: '文档', short: 'DOC', color: '#2A7A68' },
+  { id: 'file', label: '本地文件', short: 'FILE', color: '#60768C' },
+  { id: 'image', label: '图片', short: 'IMG', color: '#B56B2A' },
+];
+
+export type ColumnTemplateId = 'general' | 'learning' | 'collect' | 'blank';
+
+export const COLUMN_TEMPLATES: {
+  id: ColumnTemplateId;
+  label: string;
+  desc: string;
+  columns: WorkspaceColumn[];
+}[] = [
+  {
+    id: 'general',
+    label: '通用',
+    desc: '待办 / 进行中 / 完成',
+    columns: [
+      { id: 'todo', name: '待办' },
+      { id: 'doing', name: '进行中' },
+      { id: 'done', name: '完成' },
+    ],
+  },
+  {
+    id: 'learning',
+    label: '学习',
+    desc: '待学 / 学习中 / 已掌握',
+    columns: [
+      { id: 'to_learn', name: '待学' },
+      { id: 'learning', name: '学习中' },
+      { id: 'mastered', name: '已掌握' },
+    ],
+  },
+  {
+    id: 'collect',
+    label: '素材收集',
+    desc: '收集 / 筛选 / 采用',
+    columns: [
+      { id: 'inbox', name: '收集' },
+      { id: 'review', name: '筛选' },
+      { id: 'adopted', name: '采用' },
+    ],
+  },
+  {
+    id: 'blank',
+    label: '空白',
+    desc: '从零开始，自行建列',
+    columns: [],
+  },
+];
 
 export interface CardImage {
   id: string;
@@ -126,12 +210,18 @@ export const CARD_FINISHES: {
 export function parseCardLayout(raw?: string): CardLayout {
   try {
     const parsed = JSON.parse(raw || '{}') as Partial<CardLayout>;
+    const columns = Array.isArray(parsed.columns)
+      ? parsed.columns
+          .filter((c): c is WorkspaceColumn => Boolean(c && typeof c.id === 'string' && typeof c.name === 'string'))
+          .map((c) => ({ id: c.id, name: c.name }))
+      : undefined;
     return {
       x: Number.isFinite(parsed.x) ? Math.max(0, Math.min(10, Number(parsed.x))) : 0,
       y: Number.isFinite(parsed.y) ? Math.max(0, Number(parsed.y)) : 0,
       w: Number.isFinite(parsed.w) ? Math.max(2, Math.min(12, Number(parsed.w))) : 4,
       h: Number.isFinite(parsed.h) ? Math.max(1, Math.min(8, Number(parsed.h))) : 2,
       ...(parsed.masked ? { masked: true } : {}),
+      ...(columns !== undefined ? { columns } : {}),
     };
   } catch {
     return { x: 0, y: 0, w: 4, h: 2 };
@@ -161,4 +251,63 @@ export function detectLinkKind(url: string): LinkKind {
   if (url.includes('docs.google.com/document')) return 'gdoc';
   if (url.includes('drive.google.com')) return 'gdrive';
   return 'url';
+}
+
+export function isLocalPath(value: string): boolean {
+  const s = value.trim();
+  if (!s) return false;
+  return (
+    s.startsWith('/') ||
+    s.startsWith('~/') ||
+    s.startsWith('file://') ||
+    /^[a-zA-Z]:[\\/]/.test(s) ||
+    s.startsWith('\\\\')
+  );
+}
+
+export function detectItemType(urlOrPath: string): ItemType {
+  const s = urlOrPath.trim();
+  if (!s) return 'task';
+  const lower = s.toLowerCase();
+  const clean = lower.split(/[?#]/)[0];
+
+  if (/\.(mp4|mov|mkv|webm|avi|m4v)$/.test(clean)) return 'video';
+  if (/\.(mp3|m4a|wav|flac|ogg|aac)$/.test(clean)) return 'audio';
+  if (/\.(png|jpe?g|webp|gif|svg|bmp|heic)$/.test(clean)) return 'image';
+  if (/\.(pdf|docx?|pptx?|xlsx?|md|txt|epub|pages|key|numbers)$/.test(clean)) return 'doc';
+
+  if (isLocalPath(s)) return 'file';
+
+  if (
+    lower.includes('bilibili.com') ||
+    lower.includes('b23.tv') ||
+    lower.includes('youtube.com') ||
+    lower.includes('youtu.be') ||
+    lower.includes('vimeo.com') ||
+    lower.includes('coursera.org') ||
+    lower.includes('udemy.com')
+  ) {
+    return 'video';
+  }
+  if (
+    lower.includes('xiaoyuzhoufm.com') ||
+    lower.includes('podcasts.apple.com') ||
+    lower.includes('open.spotify.com') ||
+    lower.includes('ximalaya.com') ||
+    lower.includes('music.163.com')
+  ) {
+    return 'audio';
+  }
+  if (
+    lower.includes('docs.google.com') ||
+    lower.includes('drive.google.com') ||
+    lower.includes('notion.so') ||
+    lower.includes('notion.site') ||
+    lower.includes('feishu.cn') ||
+    lower.includes('yuque.com') ||
+    lower.includes('arxiv.org')
+  ) {
+    return 'doc';
+  }
+  return 'link';
 }

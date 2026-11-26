@@ -23,19 +23,33 @@ const TABLE_COLUMNS = {
     'links_json',
     'sensitive',
   ]),
+  Items: SYSTEM_COLUMNS.concat([
+    'card_id',
+    'column_id',
+    'prev_column_id',
+    'sort',
+    'type',
+    'title',
+    'url',
+    'tags',
+    'note',
+    'due',
+    'body_md',
+  ]),
 };
 
 const LOG_COLUMNS = ['ts', 'device', 'mutation_id', 'table', 'row_id', 'op', 'patch', 'old_values'];
 const MAX_SKEW_MS = 5 * 60 * 1000;
 
 /**
- * Run once manually in Apps Script editor to initialize Boards & Cards sheets
+ * Run once manually in Apps Script editor to initialize Boards, Cards & Items sheets
  * (and authorize DriveApp for image uploads). Safe to re-run — won't overwrite existing data.
  */
 function setupSheets() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const boardsSheet = ensureSheet_(ss, 'Boards', TABLE_COLUMNS.Boards);
   const cardsSheet = ensureSheet_(ss, 'Cards', TABLE_COLUMNS.Cards);
+  ensureSheet_(ss, 'Items', TABLE_COLUMNS.Items);
   ensureSheet_(ss, '_Log', LOG_COLUMNS);
 
   // Trigger DriveApp authorization & ensure /LifeOS/Uploads exists
@@ -198,6 +212,7 @@ function buildSnapshot_() {
     tables: {
       Boards: readTable_(ss, 'Boards'),
       Cards: readTable_(ss, 'Cards'),
+      Items: readTable_(ss, 'Items'),
     },
   };
 }

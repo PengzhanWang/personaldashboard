@@ -119,6 +119,7 @@ export function BentoCanvas({
   cards,
   boards,
   viewMode,
+  onOpenWorkspace,
   onEditCard,
   onUpdateCard,
   onMoveCardToBoard,
@@ -131,6 +132,7 @@ export function BentoCanvas({
   cards: Row[];
   boards: Row[];
   viewMode: 'desktop' | 'mobile';
+  onOpenWorkspace: (card: Row) => void;
   onEditCard: (card: Row) => void;
   onUpdateCard: (card: Row, patch: Record<string, string>) => void;
   onMoveCardToBoard: (card: Row, targetBoardId: string) => void;
@@ -204,13 +206,9 @@ export function BentoCanvas({
   function toggleCardMasked(card: Row) {
     const cur = parseCardLayout(card.layout_json);
     const nextMasked = !cur.masked;
-    const nextLayout: CardLayout = {
-      x: cur.x,
-      y: cur.y,
-      w: cur.w,
-      h: cur.h,
-      ...(nextMasked ? { masked: true } : {}),
-    };
+    const nextLayout: CardLayout = { ...cur };
+    if (nextMasked) nextLayout.masked = true;
+    else delete nextLayout.masked;
     onUpdateCard(card, { layout_json: JSON.stringify(nextLayout) });
     if (nextMasked) {
       setRevealedIds((prev) => {
@@ -564,7 +562,7 @@ export function BentoCanvas({
                     toggleRevealCard(card.id);
                     return;
                   }
-                  onEditCard(card);
+                  onOpenWorkspace(card);
                 }}
                 className="bento-item"
               >
@@ -889,6 +887,18 @@ export function BentoCanvas({
           onClick={(e) => e.stopPropagation()}
           className="fixed z-50 w-56 bg-white/95 backdrop-blur-xl border border-[var(--hairline-strong)] rounded-[3px] shadow-[0_18px_40px_-14px_rgba(15,30,48,0.28)] p-1.5 text-xs space-y-1"
         >
+          <button
+            type="button"
+            onClick={() => {
+              onOpenWorkspace(activeMenuCard);
+              setContextMenu(null);
+            }}
+            className="w-full text-left px-3 py-1.5 rounded-[2px] hover:bg-[#0F1E30] hover:text-white font-semibold flex items-center justify-between cursor-pointer transition"
+          >
+            <span>打开全屏工作台</span>
+            <span className="nolan-label text-[9.5px] opacity-60">OPEN</span>
+          </button>
+
           <button
             type="button"
             onClick={() => {

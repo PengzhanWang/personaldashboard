@@ -159,13 +159,10 @@ export function CardModal({
       }
     } else if (card && masked !== init.masked) {
       const cur = parseCardLayout(card.layout_json);
-      patch.layout_json = JSON.stringify({
-        x: cur.x,
-        y: cur.y,
-        w: cur.w,
-        h: cur.h,
-        ...(masked ? { masked: true } : {}),
-      });
+      const nextLayout = { ...cur };
+      if (masked) nextLayout.masked = true;
+      else delete nextLayout.masked;
+      patch.layout_json = JSON.stringify(nextLayout);
     }
 
     if (isNew && onCreate) {

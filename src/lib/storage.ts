@@ -18,6 +18,9 @@ export async function loadCachedSnapshot(): Promise<{ snapshot: Snapshot | null;
   if (!snapshot?.tables?.Boards || !snapshot?.tables?.Cards) {
     return { snapshot: null, etag: null };
   }
+  if (!Array.isArray(snapshot.tables.Items)) {
+    snapshot.tables.Items = [];
+  }
   return { snapshot, etag: etag ?? null };
 }
 

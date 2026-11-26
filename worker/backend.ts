@@ -83,6 +83,7 @@ class MockBackend implements Backend {
   private async load(): Promise<Db> {
     const existing = await this.kv.get<Db>('mock:db', 'json');
     if (existing && Array.isArray(existing.Boards) && Array.isArray(existing.Cards)) {
+      existing.Items ||= [];
       existing._done ||= {};
       return existing;
     }
@@ -120,6 +121,7 @@ class MockBackend implements Backend {
           sensitive: 'FALSE',
         },
       ],
+      Items: [],
       _done: {},
     };
     await this.kv.put('mock:db', JSON.stringify(seeded));
@@ -133,6 +135,7 @@ class MockBackend implements Backend {
       tables: {
         Boards: db.Boards.filter((r) => r.deleted !== 'TRUE'),
         Cards: db.Cards.filter((r) => r.deleted !== 'TRUE'),
+        Items: db.Items.filter((r) => r.deleted !== 'TRUE'),
       },
     };
   }

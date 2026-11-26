@@ -5,6 +5,7 @@ import { BoardModal } from './components/BoardModal';
 import { BottomDock } from './components/BottomDock';
 import { CardModal, type CardDraft } from './components/CardModal';
 import { LoginView } from './components/LoginView';
+import { ProjectWorkspace } from './components/ProjectWorkspace';
 import { SearchModal } from './components/SearchModal';
 import { StoreProvider, useStore } from './lib/store';
 import { ulid } from './lib/ulid';
@@ -36,6 +37,7 @@ function CanvasShell() {
     backendKind,
     boards,
     cards,
+    items,
     syncState,
     lastSyncedAt,
     pendingCount,
@@ -53,6 +55,7 @@ function CanvasShell() {
 
   const [activeBoardId, setActiveBoardId] = useState<string>('main');
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop');
+  const [workspaceCardId, setWorkspaceCardId] = useState<string | null>(null);
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [creatingDraft, setCreatingDraft] = useState<CardDraft | null>(null);
   const [boardModal, setBoardModal] = useState<'new' | Row | null>(null);
@@ -106,6 +109,11 @@ function CanvasShell() {
   const editingCard = useMemo(
     () => (editingCardId ? cards.find((c) => c.id === editingCardId) || null : null),
     [cards, editingCardId],
+  );
+
+  const workspaceCard = useMemo(
+    () => (workspaceCardId ? cards.find((c) => c.id === workspaceCardId) || null : null),
+    [cards, workspaceCardId],
   );
 
   if (authState === 'checking') {
@@ -165,7 +173,7 @@ function CanvasShell() {
 
   async function handleDeleteBoard(board: Row, moveCardsToBoardId: string | null) {
     const affected = cards.filter((c) => (c.board_id || 'main') === board.id);
-    const ops: { table: 'Boards' | 'Cards'; op: 'upsert' | 'delete'; row: Row; patch?: Record<string, string> }[] = [];
+    const ops: { table: 'Boards' | 'Cards' | 'Items'; op: 'upsert' | 'delete'; row: Row; patch?: Record<string, string> }[] = [];
 
     if (moveCardsToBoardId) {
       let yCursor = nextFreeY(moveCardsToBoardId);
@@ -183,8 +191,14 @@ function CanvasShell() {
         yCursor += l.h;
       }
     } else {
+      const affectedCardIds = new Set(affected.map((c) => c.id));
       for (const c of affected) {
         ops.push({ table: 'Cards', op: 'delete', row: c });
+      }
+      for (const it of items) {
+        if (affectedCardIds.has(it.card_id)) {
+          ops.push({ table: 'Items', op: 'delete', row: it });
+        }
       }
     }
 
@@ -483,6 +497,11 @@ function CanvasShell() {
           cards={boardCards}
           boards={sortedBoards}
           viewMode={viewMode}
+          onOpenWorkspace={(c) => {
+            setCreatingDraft(null);
+            setEditingCardId(null);
+            setWorkspaceCardId(c.id);
+          }}
           onEditCard={(c) => {
             setCreatingDraft(null);
             setEditingCardId(c.id);
@@ -504,6 +523,18 @@ function CanvasShell() {
         onUploadImageCard={(f) => void handleUploadImageCard(f)}
         onAddLinkCard={(t, u) => void handleAddLinkCard(t, u)}
       />
+
+      {workspaceCard && (
+        <ProjectWorkspace
+          card={workspaceCard}
+          onClose={() => setWorkspaceCardId(null)}
+          onOpenCardSettings={(c) => {
+            setCreatingDraft(null);
+            setEditingCardId(c.id);
+          }}
+          onOpenLightbox={setLightboxSrc}
+        />
+      )}
 
       {editingCard && (
         <CardModal
@@ -547,7 +578,7 @@ function CanvasShell() {
           cards={cards}
           onSelect={(c) => {
             setActiveBoardId(c.board_id || 'main');
-            setEditingCardId(c.id);
+            setWorkspaceCardId(c.id);
           }}
           onClose={() => setSearchOpen(false)}
         />
@@ -582,7 +613,16 @@ function CanvasShell() {
                   const target = confirmDeleteCard;
                   setConfirmDeleteCard(null);
                   if (editingCardId === target.id) setEditingCardId(null);
-                  void deleteRow('Cards', target);
+                  if (workspaceCardId === target.id) setWorkspaceCardId(null);
+                  const childItems = items.filter((it) => it.card_id === target.id);
+                  if (childItems.length > 0) {
+                    void mutateBatch([
+                      { table: 'Cards', op: 'delete', row: target },
+                      ...childItems.map((it) => ({ table: 'Items' as const, op: 'delete' as const, row: it })),
+                    ]);
+                  } else {
+                    void deleteRow('Cards', target);
+                  }
                   showToast('模块已删除');
                 }}
                 className="bg-[#D94E28] text-white px-4 py-1.5 rounded-[2px] nolan-label text-[10px] font-semibold cursor-pointer"
