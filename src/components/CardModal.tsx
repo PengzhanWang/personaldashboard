@@ -3,6 +3,7 @@ import {
   CARD_FINISHES,
   detectLinkKind,
   parseCardImages,
+  parseCardLayout,
   parseCardLinks,
   type CardFinish,
   type CardImage,
@@ -67,6 +68,7 @@ export function CardModal({
       images: card ? parseCardImages(card.images_json) : [],
       links: card ? parseCardLinks(card.links_json) : [],
       sensitive: card?.sensitive === 'TRUE',
+      masked: card ? Boolean(parseCardLayout(card.layout_json).masked) : false,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [card?.id, draft],
@@ -80,6 +82,7 @@ export function CardModal({
   const [images, setImages] = useState<CardImage[]>(init.images);
   const [links, setLinks] = useState<CardLink[]>(init.links);
   const [sensitive, setSensitive] = useState(init.sensitive);
+  const [masked, setMasked] = useState(init.masked);
   const [linkTitle, setLinkTitle] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -100,10 +103,11 @@ export function CardModal({
       boardId !== init.boardId ||
       content !== init.content ||
       sensitive !== init.sensitive ||
+      masked !== init.masked ||
       JSON.stringify(images) !== JSON.stringify(init.images) ||
       JSON.stringify(links) !== JSON.stringify(init.links)
     );
-  }, [isNew, tag, title, finish, boardId, content, sensitive, images, links, init]);
+  }, [isNew, tag, title, finish, boardId, content, sensitive, masked, images, links, init]);
 
   const handleFiles = useCallback(
     async (files: File[]) => {
@@ -149,13 +153,28 @@ export function CardModal({
       sensitive: sensitive ? 'TRUE' : 'FALSE',
     };
 
+    if (isNew) {
+      if (masked) {
+        patch.layout_json = JSON.stringify({ x: 0, y: 0, w: 4, h: 2, masked: true });
+      }
+    } else if (card && masked !== init.masked) {
+      const cur = parseCardLayout(card.layout_json);
+      patch.layout_json = JSON.stringify({
+        x: cur.x,
+        y: cur.y,
+        w: cur.w,
+        h: cur.h,
+        ...(masked ? { masked: true } : {}),
+      });
+    }
+
     if (isNew && onCreate) {
       await onCreate(patch);
     } else if (card && onSaveExisting) {
       await onSaveExisting(card, patch);
     }
     onClose();
-  }, [isNew, title, content, images, links, boardId, tag, finish, sensitive, onCreate, card, onSaveExisting, onClose, showToast]);
+  }, [isNew, title, content, images, links, boardId, tag, finish, sensitive, masked, init.masked, onCreate, card, onSaveExisting, onClose, showToast]);
 
   const handleSaveRef = useRef(handleSave);
   handleSaveRef.current = handleSave;
@@ -504,15 +523,25 @@ export function CardModal({
           </div>
 
           {/* Footer */}
-          <div className="pt-3 border-t border-[var(--hairline)] flex items-center justify-between">
-            <label className="flex items-center gap-2 cursor-pointer text-[var(--muted-foreground)]">
-              <input
-                type="checkbox"
-                checked={sensitive}
-                onChange={(e) => setSensitive(e.target.checked)}
-              />
-              <span>公司电脑模式下隐藏此模块</span>
-            </label>
+          <div className="pt-3 border-t border-[var(--hairline)] flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-col gap-2">
+              <label className="flex items-center gap-2 cursor-pointer text-[#0F1E30]">
+                <input
+                  type="checkbox"
+                  checked={masked}
+                  onChange={(e) => setMasked(e.target.checked)}
+                />
+                <span>默认隐藏卡片内容（点击再显示，适合放账号 / 密码）</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer text-[var(--muted-foreground)]">
+                <input
+                  type="checkbox"
+                  checked={sensitive}
+                  onChange={(e) => setSensitive(e.target.checked)}
+                />
+                <span>公司电脑模式下隐藏此模块</span>
+              </label>
+            </div>
             {!isNew && card && (
               <button type="button" onClick={() => onRequestDelete?.(card)} className="nolan-label text-[10px] font-semibold text-[#D94E28] hover:underline cursor-pointer">
                 DELETE MODULE

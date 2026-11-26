@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { parseCardLinks, type Row } from '../../shared/schema';
+import { parseCardLayout, parseCardLinks, type Row } from '../../shared/schema';
 
 export function SearchModal({
   boards,
@@ -70,7 +70,10 @@ export function SearchModal({
             <div className="py-10 text-center nolan-label text-[11px] text-[var(--muted-foreground)]">NO MATCHING MODULES</div>
           ) : (
             results.map((c) => {
-              const snippet = (c.content_md || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+              const isMasked = Boolean(parseCardLayout(c.layout_json).masked);
+              const snippet = isMasked
+                ? '••••••••（已隐藏内容，点开查看）'
+                : (c.content_md || '').replace(/\s+/g, ' ').trim().slice(0, 80);
               return (
                 <button
                   key={c.id}

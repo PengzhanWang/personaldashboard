@@ -126,6 +126,7 @@ export function BentoCanvas({
   onDeleteCard,
   onCommitLayouts,
   onOpenLightbox,
+  onNotify,
 }: {
   cards: Row[];
   boards: Row[];
@@ -137,6 +138,7 @@ export function BentoCanvas({
   onDeleteCard: (card: Row) => void;
   onCommitLayouts: (updates: { row: Row; layout: CardLayout }[]) => void;
   onOpenLightbox: (src: string) => void;
+  onNotify?: (msg: string) => void;
 }) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const placeholderRef = useRef<HTMLDivElement | null>(null);
@@ -144,6 +146,8 @@ export function BentoCanvas({
   const [stageWidth, setStageWidth] = useState(1040);
   const [quickInputs, setQuickInputs] = useState<Record<string, string>>({});
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [revealedIds, setRevealedIds] = useState<Record<string, boolean>>({});
+  const revealTimersRef = useRef(new Map<string, number>());
   const justDraggedRef = useRef<string | null>(null);
 
   const [narrowScreen, setNarrowScreen] = useState(() =>
@@ -155,6 +159,85 @@ export function BentoCanvas({
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  // Auto re-hide all revealed masked cards when switching tabs or minimizing window
+  useEffect(() => {
+    const hideAll = () => {
+      if (document.hidden) {
+        for (const t of revealTimersRef.current.values()) window.clearTimeout(t);
+        revealTimersRef.current.clear();
+        setRevealedIds({});
+      }
+    };
+    document.addEventListener('visibilitychange', hideAll);
+    return () => {
+      document.removeEventListener('visibilitychange', hideAll);
+      for (const t of revealTimersRef.current.values()) window.clearTimeout(t);
+      revealTimersRef.current.clear();
+    };
+  }, []);
+
+  function toggleRevealCard(cardId: string) {
+    setRevealedIds((prev) => {
+      const nextVal = !prev[cardId];
+      const existingTimer = revealTimersRef.current.get(cardId);
+      if (existingTimer) {
+        window.clearTimeout(existingTimer);
+        revealTimersRef.current.delete(cardId);
+      }
+      if (nextVal) {
+        const timer = window.setTimeout(() => {
+          revealTimersRef.current.delete(cardId);
+          setRevealedIds((cur) => {
+            if (!cur[cardId]) return cur;
+            const copy = { ...cur };
+            delete copy[cardId];
+            return copy;
+          });
+        }, 30_000);
+        revealTimersRef.current.set(cardId, timer);
+      }
+      return { ...prev, [cardId]: nextVal };
+    });
+  }
+
+  function toggleCardMasked(card: Row) {
+    const cur = parseCardLayout(card.layout_json);
+    const nextMasked = !cur.masked;
+    const nextLayout: CardLayout = {
+      x: cur.x,
+      y: cur.y,
+      w: cur.w,
+      h: cur.h,
+      ...(nextMasked ? { masked: true } : {}),
+    };
+    onUpdateCard(card, { layout_json: JSON.stringify(nextLayout) });
+    if (nextMasked) {
+      setRevealedIds((prev) => {
+        if (!prev[card.id]) return prev;
+        const copy = { ...prev };
+        delete copy[card.id];
+        return copy;
+      });
+      onNotify?.('已设为默认隐藏内容');
+    } else {
+      onNotify?.('已取消内容隐藏');
+    }
+  }
+
+  async function copySecretLine(e: React.MouseEvent, rawLine: string) {
+    e.stopPropagation();
+    // If formatted as "密码：xxx" or "Key: xxx", copy just the value part
+    const match = rawLine.match(/^[^:：]{1,24}[:：]\s*(.+)$/);
+    const text = (match ? match[1] : rawLine).trim();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      onNotify?.(match ? '已复制值到剪贴板' : '已复制到剪贴板');
+    } catch {
+      onNotify?.('复制失败，请手动选中复制');
+    }
+  }
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -434,6 +517,9 @@ export function BentoCanvas({
             const quickVal = quickInputs[card.id] || '';
             const motif = CARD_FINISHES.find((f) => f.id === (card.finish || 'default')) || CARD_FINISHES[0];
             const isInk = motif.id === 'ink';
+            const isMasked = Boolean(layout.masked);
+            const isRevealed = Boolean(revealedIds[card.id]);
+            const isLocked = isMasked && !isRevealed;
 
             let checkTotal = 0;
             let checkDone = 0;
@@ -474,6 +560,10 @@ export function BentoCanvas({
                     document.activeElement.blur();
                     return;
                   }
+                  if (isLocked) {
+                    toggleRevealCard(card.id);
+                    return;
+                  }
                   onEditCard(card);
                 }}
                 className="bento-item"
@@ -495,9 +585,18 @@ export function BentoCanvas({
                             {card.tag}
                           </span>
                         )}
-                        {checkTotal > 0 && (
+                        {checkTotal > 0 && !isLocked && (
                           <span className="font-mono text-[10px] muted-text text-[var(--muted-foreground)]">
                             {checkDone}/{checkTotal}
+                          </span>
+                        )}
+                        {isMasked && (
+                          <span
+                            className={`nolan-label text-[9px] px-1 border ${
+                              isRevealed ? 'border-[#D94E28] text-[#D94E28]' : 'border-current/35 opacity-75'
+                            }`}
+                          >
+                            {isRevealed ? '已显示' : '已隐藏'}
                           </span>
                         )}
                         {card.sensitive === 'TRUE' && (
@@ -509,161 +608,237 @@ export function BentoCanvas({
                       <h3 className="nolan-title font-bold text-[13.5px] truncate mt-1">{card.title || '未命名模块'}</h3>
                     </div>
 
-                    <div data-no-drag="1" className={`flex items-center gap-1 shrink-0 ${isMobile ? '' : 'hover-controls'}`}>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onEditCard(card);
-                        }}
-                        title="编辑模块"
-                        className="px-1.5 py-0.5 nolan-label text-[9.5px] font-semibold opacity-70 hover:opacity-100 cursor-pointer"
-                      >
-                        EDIT
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => openContextMenu(e, card)}
-                        title="更多操作（也可右键卡片）"
-                        className="p-1 rounded-[2px] border border-current/20 hover:border-current/60 cursor-pointer"
-                      >
-                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
-                          <circle cx="5" cy="12" r="2" />
-                          <circle cx="12" cy="12" r="2" />
-                          <circle cx="19" cy="12" r="2" />
-                        </svg>
-                      </button>
+                    <div data-no-drag="1" className="flex items-center gap-1 shrink-0">
+                      {isMasked && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleRevealCard(card.id);
+                          }}
+                          title={isRevealed ? '立即隐藏内容（30 秒后也会自动隐藏）' : '点击显示隐藏内容'}
+                          className={`p-1 rounded-[2px] border cursor-pointer transition ${
+                            isRevealed
+                              ? 'border-[#D94E28] text-[#D94E28] hover:bg-[#D94E28] hover:text-white'
+                              : 'border-current/25 opacity-75 hover:opacity-100 hover:border-current'
+                          }`}
+                        >
+                          {isRevealed ? (
+                            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                              <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                              <line x1="1" y1="1" x2="23" y2="23" />
+                            </svg>
+                          ) : (
+                            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                              <circle cx="12" cy="12" r="3" />
+                            </svg>
+                          )}
+                        </button>
+                      )}
+
+                      <div className={`flex items-center gap-1 ${isMobile ? '' : 'hover-controls'}`}>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEditCard(card);
+                          }}
+                          title="编辑模块"
+                          className="px-1.5 py-0.5 nolan-label text-[9.5px] font-semibold opacity-70 hover:opacity-100 cursor-pointer"
+                        >
+                          EDIT
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => openContextMenu(e, card)}
+                          title="更多操作（也可右键卡片）"
+                          className="p-1 rounded-[2px] border border-current/20 hover:border-current/60 cursor-pointer"
+                        >
+                          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                            <circle cx="5" cy="12" r="2" />
+                            <circle cx="12" cy="12" r="2" />
+                            <circle cx="19" cy="12" r="2" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   </div>
 
                   {/* Card Content Surface */}
-                  <div className="px-4 py-3 flex-1 flex flex-col gap-1 overflow-y-auto card-scroll">
-                    <div className="space-y-1">
-                      {lines.map((line, idx) => {
-                        const unchecked = line.match(/^\s*-\s*\[ \]\s*(.*)$/);
-                        if (unchecked) {
-                          return (
-                            <div
-                              key={idx}
-                              data-check="1"
-                              onClick={(e) => toggleChecklistLine(e, card, idx)}
-                              className="flex items-start gap-2.5 py-0.5 cursor-pointer"
-                            >
-                              <span className="check-box" />
-                              <span className="text-[12.5px] leading-snug break-words">{unchecked[1]}</span>
-                            </div>
-                          );
-                        }
-                        const checked = line.match(/^\s*-\s*\[[xX]\]\s*(.*)$/);
-                        if (checked) {
-                          return (
-                            <div
-                              key={idx}
-                              data-check="1"
-                              onClick={(e) => toggleChecklistLine(e, card, idx)}
-                              className="flex items-start gap-2.5 py-0.5 cursor-pointer opacity-45"
-                            >
-                              <span className="check-box checked">
-                                <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
-                                  <polyline points="20 6 9 17 4 12" />
-                                </svg>
-                              </span>
-                              <span className="text-[12.5px] leading-snug line-through break-words">{checked[1]}</span>
-                            </div>
-                          );
-                        }
-                        if (!line.trim()) return null;
-                        return (
-                          <p key={idx} className="text-[12.5px] muted-text text-[var(--muted-foreground)] leading-relaxed break-words">
-                            {line}
-                          </p>
-                        );
-                      })}
+                  {isLocked ? (
+                    <div
+                      data-no-drag="1"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleRevealCard(card.id);
+                      }}
+                      className="px-4 py-4 flex-1 flex flex-col items-center justify-center gap-2.5 text-center cursor-pointer select-none group/mask"
+                    >
+                      <div className="w-full max-w-[180px] space-y-1.5 opacity-25">
+                        <div className="h-1.5 w-4/5 mx-auto bg-current rounded-[1px]" />
+                        <div className="h-1.5 w-3/5 mx-auto bg-current rounded-[1px]" />
+                      </div>
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-[2px] border border-current/25 group-hover/mask:border-[#D94E28] group-hover/mask:text-[#D94E28] nolan-label text-[10px] font-semibold transition">
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="3" y="11" width="18" height="11" rx="2" />
+                          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                        </svg>
+                        <span>点击显示内容</span>
+                      </span>
+                      <span className="text-[10px] muted-text text-[var(--muted-foreground)] opacity-75">
+                        显示 30 秒或切页后自动重新隐藏
+                      </span>
                     </div>
-
-                    {/* Images Grid */}
-                    {images.length > 0 && (
-                      <div className={`grid ${images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'} gap-2 mt-2`}>
-                        {images.slice(0, 4).map((im) => {
-                          const fullUrl = `/api/image/${encodeURIComponent(im.file_id)}`;
+                  ) : (
+                    <div className="px-4 py-3 flex-1 flex flex-col gap-1 overflow-y-auto card-scroll">
+                      <div className="space-y-1">
+                        {lines.map((line, idx) => {
+                          const unchecked = line.match(/^\s*-\s*\[ \]\s*(.*)$/);
+                          if (unchecked) {
+                            return (
+                              <div
+                                key={idx}
+                                data-check="1"
+                                onClick={(e) => toggleChecklistLine(e, card, idx)}
+                                className="flex items-start gap-2.5 py-0.5 cursor-pointer"
+                              >
+                                <span className="check-box" />
+                                <span className="text-[12.5px] leading-snug break-words">{unchecked[1]}</span>
+                              </div>
+                            );
+                          }
+                          const checked = line.match(/^\s*-\s*\[[xX]\]\s*(.*)$/);
+                          if (checked) {
+                            return (
+                              <div
+                                key={idx}
+                                data-check="1"
+                                onClick={(e) => toggleChecklistLine(e, card, idx)}
+                                className="flex items-start gap-2.5 py-0.5 cursor-pointer opacity-45"
+                              >
+                                <span className="check-box checked">
+                                  <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="20 6 9 17 4 12" />
+                                  </svg>
+                                </span>
+                                <span className="text-[12.5px] leading-snug line-through break-words">{checked[1]}</span>
+                              </div>
+                            );
+                          }
+                          if (!line.trim()) return null;
+                          if (isMasked) {
+                            return (
+                              <div
+                                key={idx}
+                                className="group/line flex items-start justify-between gap-2 py-0.5 rounded-[2px] hover:bg-current/[0.05] px-1 -mx-1"
+                              >
+                                <p className="text-[12.5px] font-mono leading-relaxed break-all">{line}</p>
+                                <button
+                                  type="button"
+                                  data-no-drag="1"
+                                  onClick={(e) => void copySecretLine(e, line)}
+                                  title="一键复制（含冒号时自动只复制冒号后的值）"
+                                  className="opacity-0 group-hover/line:opacity-100 focus:opacity-100 shrink-0 px-1.5 py-0.5 rounded-[2px] border border-current/25 hover:border-[#D94E28] hover:text-[#D94E28] nolan-label text-[9px] font-semibold cursor-pointer transition"
+                                >
+                                  COPY
+                                </button>
+                              </div>
+                            );
+                          }
                           return (
-                            <div
-                              key={im.id}
-                              data-lightbox="1"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onOpenLightbox(fullUrl);
-                              }}
-                              style={
-                                im.thumb
-                                  ? { backgroundImage: `url(${im.thumb})`, backgroundSize: 'cover', backgroundPosition: 'center' }
-                                  : undefined
-                              }
-                              className="relative overflow-hidden rounded-[2px] border border-[var(--hairline)] h-24 cursor-zoom-in group/img bg-[#ECF0F4]"
-                            >
-                              <img
-                                src={fullUrl}
-                                alt={im.caption || ''}
-                                loading="lazy"
-                                draggable={false}
-                                className="w-full h-full object-cover group-hover/img:scale-105 transition duration-300"
-                              />
-                            </div>
+                            <p key={idx} className="text-[12.5px] muted-text text-[var(--muted-foreground)] leading-relaxed break-words">
+                              {line}
+                            </p>
                           );
                         })}
                       </div>
-                    )}
 
-                    {/* Quick inline checklist add */}
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        commitQuickInput(card);
-                      }}
-                      data-no-drag="1"
-                      className="mt-1 flex items-center gap-1"
-                    >
-                      <input
-                        type="text"
-                        data-quick-input="1"
-                        value={quickVal}
-                        onChange={(e) => setQuickInputs((prev) => ({ ...prev, [card.id]: e.target.value }))}
-                        onBlur={() => commitQuickInput(card)}
-                        placeholder="+ 快速加一条清单（回车确认）…"
-                        className="flex-1 bg-transparent text-[11px] py-1 focus:outline-none placeholder:opacity-45 border-b border-transparent focus:border-current/40 min-w-0"
-                      />
-                      {quickVal.trim() && (
-                        <button
-                          type="submit"
-                          onMouseDown={(e) => e.preventDefault()}
-                          className="px-1.5 py-0.5 rounded-[2px] bg-[#0F1E30] text-white font-mono text-[10px] cursor-pointer shrink-0"
-                        >
-                          ↵
-                        </button>
+                      {/* Images Grid */}
+                      {images.length > 0 && (
+                        <div className={`grid ${images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'} gap-2 mt-2`}>
+                          {images.slice(0, 4).map((im) => {
+                            const fullUrl = `/api/image/${encodeURIComponent(im.file_id)}`;
+                            return (
+                              <div
+                                key={im.id}
+                                data-lightbox="1"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onOpenLightbox(fullUrl);
+                                }}
+                                style={
+                                  im.thumb
+                                    ? { backgroundImage: `url(${im.thumb})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+                                    : undefined
+                                }
+                                className="relative overflow-hidden rounded-[2px] border border-[var(--hairline)] h-24 cursor-zoom-in group/img bg-[#ECF0F4]"
+                              >
+                                <img
+                                  src={fullUrl}
+                                  alt={im.caption || ''}
+                                  loading="lazy"
+                                  draggable={false}
+                                  className="w-full h-full object-cover group-hover/img:scale-105 transition duration-300"
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
                       )}
-                    </form>
 
-                    {/* Linked Docs / Sheets Chips */}
-                    {links.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 pt-2.5 mt-auto border-t border-[var(--hairline)] card-divider">
-                        {links.map((l) => (
-                          <a
-                            key={l.id}
-                            href={l.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            data-no-drag="1"
-                            className="subtle-pill inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[2px] text-[11px] border border-[var(--hairline-strong)] bg-[#ECF0F4]/50 hover:bg-[#0F1E30] hover:text-white hover:border-[#0F1E30] transition max-w-full"
+                      {/* Quick inline checklist add */}
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          commitQuickInput(card);
+                        }}
+                        data-no-drag="1"
+                        className="mt-1 flex items-center gap-1"
+                      >
+                        <input
+                          type="text"
+                          data-quick-input="1"
+                          value={quickVal}
+                          onChange={(e) => setQuickInputs((prev) => ({ ...prev, [card.id]: e.target.value }))}
+                          onBlur={() => commitQuickInput(card)}
+                          placeholder="+ 快速加一条清单（回车确认）…"
+                          className="flex-1 bg-transparent text-[11px] py-1 focus:outline-none placeholder:opacity-45 border-b border-transparent focus:border-current/40 min-w-0"
+                        />
+                        {quickVal.trim() && (
+                          <button
+                            type="submit"
+                            onMouseDown={(e) => e.preventDefault()}
+                            className="px-1.5 py-0.5 rounded-[2px] bg-[#0F1E30] text-white font-mono text-[10px] cursor-pointer shrink-0"
                           >
-                            <span className="w-1.5 h-1.5 shrink-0" style={{ background: linkDotColor(l.kind) }} />
-                            <span className="truncate font-medium">{l.title}</span>
-                            <span className="opacity-55 shrink-0">↗</span>
-                          </a>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                            ↵
+                          </button>
+                        )}
+                      </form>
+
+                      {/* Linked Docs / Sheets Chips */}
+                      {links.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-2.5 mt-auto border-t border-[var(--hairline)] card-divider">
+                          {links.map((l) => (
+                            <a
+                              key={l.id}
+                              href={l.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              data-no-drag="1"
+                              className="subtle-pill inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[2px] text-[11px] border border-[var(--hairline-strong)] bg-[#ECF0F4]/50 hover:bg-[#0F1E30] hover:text-white hover:border-[#0F1E30] transition max-w-full"
+                            >
+                              <span className="w-1.5 h-1.5 shrink-0" style={{ background: linkDotColor(l.kind) }} />
+                              <span className="truncate font-medium">{l.title}</span>
+                              <span className="opacity-55 shrink-0">↗</span>
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Desktop Hover Size Bar + Corner Resize Grip */}
                   {!isMobile && (
@@ -812,12 +987,23 @@ export function BentoCanvas({
           <button
             type="button"
             onClick={() => {
+              toggleCardMasked(activeMenuCard);
+              setContextMenu(null);
+            }}
+            className="w-full text-left px-3 py-1.5 rounded-[2px] hover:bg-[#0F1E30] hover:text-white border-t border-[var(--hairline)] cursor-pointer transition"
+          >
+            {activeMenuLayout.masked ? '取消默认隐藏内容' : '默认隐藏内容（账号 / 密码）'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
               onUpdateCard(activeMenuCard, {
                 sensitive: activeMenuCard.sensitive === 'TRUE' ? 'FALSE' : 'TRUE',
               });
               setContextMenu(null);
             }}
-            className="w-full text-left px-3 py-1.5 rounded-[2px] hover:bg-[#0F1E30] hover:text-white border-t border-[var(--hairline)] cursor-pointer transition"
+            className="w-full text-left px-3 py-1.5 rounded-[2px] hover:bg-[#0F1E30] hover:text-white cursor-pointer transition"
           >
             {activeMenuCard.sensitive === 'TRUE' ? '取消敏感标记' : '设为敏感（公司隐藏）'}
           </button>

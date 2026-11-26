@@ -213,9 +213,16 @@ function CanvasShell() {
 
   async function handleCreateFromModal(patch: Record<string, string>) {
     const targetBoard = patch.board_id || (await ensureBoardExists());
+    const draftLayout = patch.layout_json ? parseCardLayout(patch.layout_json) : null;
     await upsertRow('Cards', {
-      layout_json: JSON.stringify({ x: 0, y: nextFreeY(targetBoard), w: 4, h: 2 }),
       ...patch,
+      layout_json: JSON.stringify({
+        x: 0,
+        y: nextFreeY(targetBoard),
+        w: 4,
+        h: 2,
+        ...(draftLayout?.masked ? { masked: true } : {}),
+      }),
       board_id: targetBoard,
     });
     showToast('模块已创建');
@@ -226,7 +233,7 @@ function CanvasShell() {
     const prevBoard = card.board_id || 'main';
     const nextBoard = patch.board_id || prevBoard;
     if (nextBoard !== prevBoard) {
-      const curLayout = parseCardLayout(card.layout_json);
+      const curLayout = parseCardLayout(patch.layout_json || card.layout_json);
       nextPatch.layout_json = JSON.stringify({ ...curLayout, x: 0, y: nextFreeY(nextBoard, card.id) });
     }
     await upsertRow('Cards', nextPatch, card);
@@ -254,7 +261,7 @@ function CanvasShell() {
       tag: card.tag || '',
       title: `${card.title || '未命名模块'} (副本)`,
       finish: card.finish || 'default',
-      layout_json: JSON.stringify({ x: layout.x, y: nextFreeY(targetBoard), w: layout.w, h: layout.h }),
+      layout_json: JSON.stringify({ ...layout, y: nextFreeY(targetBoard) }),
       content_md: card.content_md || '',
       images_json: card.images_json || '[]',
       links_json: card.links_json || '[]',
@@ -486,6 +493,7 @@ function CanvasShell() {
           onDeleteCard={(c) => setConfirmDeleteCard(c)}
           onCommitLayouts={saveLayoutsDebounced}
           onOpenLightbox={setLightboxSrc}
+          onNotify={showToast}
         />
       </main>
 

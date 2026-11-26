@@ -86,6 +86,8 @@ export interface CardLayout {
   y: number;
   w: number;
   h: number;
+  /** When true, card body is hidden on canvas until explicitly revealed (for accounts/passwords). */
+  masked?: boolean;
 }
 
 export interface CardImage {
@@ -129,6 +131,7 @@ export function parseCardLayout(raw?: string): CardLayout {
       y: Number.isFinite(parsed.y) ? Math.max(0, Number(parsed.y)) : 0,
       w: Number.isFinite(parsed.w) ? Math.max(2, Math.min(12, Number(parsed.w))) : 4,
       h: Number.isFinite(parsed.h) ? Math.max(1, Math.min(8, Number(parsed.h))) : 2,
+      ...(parsed.masked ? { masked: true } : {}),
     };
   } catch {
     return { x: 0, y: 0, w: 4, h: 2 };
