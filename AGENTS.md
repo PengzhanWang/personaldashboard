@@ -18,6 +18,7 @@
    - 修改 `gas/Code.gs` 后，用户需要在 Google Sheets → 扩展程序 → Apps 脚本 → **部署 → 管理部署 → 编辑 → 版本选「新版本」→ 部署**（以保持 `/exec` URL 不变）。
 4. **隐私规则**：只针对账号密码类卡片保留「默认隐藏内容（`layout_json.masked`）」功能；后续新功能不再考虑「公司模式」。
 5. **沟通语言**：默认使用中文回复，保持简洁。
+6. **自动提交**：每次完成代码修改并验证通过后，默认自动 `git commit` 并 `git push` 到 `main` 分支。
 
 ## 3. 视觉规范（Dunkirk Sea-Mist + Nolan/Gotham）
 - 颜色 Token 定义在 `src/index.css`：

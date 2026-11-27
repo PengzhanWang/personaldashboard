@@ -103,13 +103,6 @@ function linkDotColor(kind: LinkKind): string {
   return '#60768C';
 }
 
-const SIZE_PRESETS: [string, number, number][] = [
-  ['S', 3, 2],
-  ['M', 4, 3],
-  ['W', 6, 2],
-  ['L', 6, 3],
-];
-
 interface ContextMenuState {
   card: Row;
   x: number;
@@ -332,17 +325,6 @@ export function BentoCanvas({
     if (stageRef.current) {
       stageRef.current.style.height = `${Math.max(420, maxBottom + 48)}px`;
     }
-  }
-
-  function applyPresetSize(card: Row, pw: number, ph: number) {
-    const cur = parseCardLayout(card.layout_json);
-    const updatedEntries = entries.map((item) =>
-      item.row.id === card.id
-        ? { ...item, layout: { ...cur, w: pw, h: ph, x: Math.min(cur.x, COLS_DESKTOP - pw) } }
-        : item,
-    );
-    const resolved = resolveLayout(updatedEntries, card.id);
-    commitDiff(resolved);
   }
 
   function commitDiff(resolved: Map<string, CardLayout>) {
@@ -576,7 +558,8 @@ export function BentoCanvas({
                 );
                 if (matches.length > 0) {
                   nextColName = col.name;
-                  nextItems = matches.slice(0, box.h >= 3 ? 3 : 2);
+                  const maxNext = box.h >= 4 ? 5 : box.h >= 3 ? 3 : box.h === 2 ? 1 : 0;
+                  nextItems = matches.slice(0, maxNext);
                   break;
                 }
               }
@@ -749,8 +732,8 @@ export function BentoCanvas({
                       </span>
                     </div>
                   ) : hasWorkspaceItems ? (
-                    <div className="px-4 py-3 flex-1 flex flex-col justify-between gap-2.5 overflow-hidden select-none">
-                      <div className="space-y-2.5 min-h-0">
+                    <div className="px-4 py-2.5 flex-1 min-h-0 flex flex-col justify-between gap-2 overflow-hidden select-none">
+                      <div className="flex-1 min-h-0 overflow-hidden space-y-2">
                         {/* Progress bar */}
                         {doneColId && (
                           <div className="space-y-1">
@@ -805,7 +788,7 @@ export function BentoCanvas({
 
                         {/* Next-up Preview */}
                         {nextItems.length > 0 ? (
-                          <div className="space-y-1 pt-0.5">
+                          <div className="space-y-1">
                             <div className="nolan-label text-[8.5px] font-semibold muted-text text-[var(--muted-foreground)]">
                               NEXT · {nextColName}
                             </div>
@@ -822,17 +805,19 @@ export function BentoCanvas({
                               );
                             })}
                           </div>
-                        ) : (
+                        ) : !nextColName && box.h >= 2 ? (
                           <div className="text-[11px] font-semibold text-[#2A7A68] pt-0.5">
                             全部完成 ✓
                           </div>
-                        )}
+                        ) : null}
                       </div>
 
-                      <div className="flex items-center justify-between pt-1 border-t border-[var(--hairline)] card-divider text-[9.5px] nolan-label muted-text text-[var(--muted-foreground)]">
-                        <span>WORKSPACE</span>
-                        <span>点击展开 ↗</span>
-                      </div>
+                      {box.h >= 2 && (
+                        <div className="shrink-0 flex items-center justify-between pt-1.5 border-t border-[var(--hairline)] card-divider text-[9.5px] nolan-label muted-text text-[var(--muted-foreground)]">
+                          <span>WORKSPACE</span>
+                          <span>点击展开 ↗</span>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="px-4 py-3 flex-1 flex flex-col gap-1 overflow-y-auto card-scroll">
@@ -983,40 +968,15 @@ export function BentoCanvas({
                     </div>
                   )}
 
-                  {/* Desktop Hover Size Bar + Corner Resize Grip */}
+                  {/* Desktop Corner Resize Grip */}
                   {!isMobile && (
-                    <>
-                      <div
-                        data-no-drag="1"
-                        className="hover-controls absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center rounded-[2px] border border-[var(--hairline-strong)] bg-white/95 backdrop-blur-md shadow-md overflow-hidden"
-                      >
-                        {SIZE_PRESETS.map(([label, pw, ph]) => (
-                          <button
-                            key={label}
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              applyPresetSize(card, pw, ph);
-                            }}
-                            className={`px-2 py-0.5 nolan-label text-[9.5px] font-semibold cursor-pointer transition ${
-                              layout.w === pw && layout.h === ph
-                                ? 'bg-[#0F1E30] text-white'
-                                : 'text-[#0F1E30] hover:bg-[#ECF0F4]'
-                            }`}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div
-                        data-resize="1"
-                        title="拖拽缩放尺寸"
-                        className="no-select absolute right-0.5 bottom-0.5 w-4 h-4 text-current opacity-35 hover:opacity-85 font-mono text-[9px] flex items-center justify-center cursor-nwse-resize transition"
-                      >
-                        ◢
-                      </div>
-                    </>
+                    <div
+                      data-resize="1"
+                      title="拖拽缩放尺寸"
+                      className="no-select absolute right-0.5 bottom-0.5 w-4 h-4 text-current opacity-35 hover:opacity-85 font-mono text-[9px] flex items-center justify-center cursor-nwse-resize transition"
+                    >
+                      ◢
+                    </div>
                   )}
                 </div>
               </div>
@@ -1088,32 +1048,6 @@ export function BentoCanvas({
               ))}
             </div>
           </div>
-
-          {/* Quick Sizes */}
-          {!isMobile && (
-            <div className="px-3 py-1.5 flex items-center justify-between">
-              <span className="nolan-label text-[10px] text-[var(--muted-foreground)]">SIZE</span>
-              <div className="flex items-center gap-1">
-                {SIZE_PRESETS.map(([label, pw, ph]) => (
-                  <button
-                    key={label}
-                    type="button"
-                    onClick={() => {
-                      applyPresetSize(activeMenuCard, pw, ph);
-                      setContextMenu(null);
-                    }}
-                    className={`px-2 py-0.5 rounded-[2px] border border-[var(--hairline-strong)] nolan-label text-[9.5px] font-semibold cursor-pointer transition ${
-                      activeMenuLayout.w === pw && activeMenuLayout.h === ph
-                        ? 'bg-[#0F1E30] border-[#0F1E30] text-white'
-                        : 'bg-white hover:bg-[#ECF0F4]'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Move to another board */}
           {boards.length > 1 && (
